@@ -1,6 +1,6 @@
 import os
 import subprocess
-import maya.cmds as cmds
+import maya.cmds as cmds # type: ignore
 
 def main():
     # Prompt user for a .mov or .mp4 file using Maya's file dialog

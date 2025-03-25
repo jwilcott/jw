@@ -65,15 +65,18 @@ def connect_dof_to_cam_locator():
 
     # Connect the distance output to rsBokeh1.dofFocusDistance
     if not cmds.objExists("rsBokeh1"):
-        cmds.warning("rsBokeh1 node does not exist in the scene.")
-        return
+        rsBokeh1 = cmds.createNode("RedshiftBokeh", name="rsBokeh1")
+        cmds.setAttr("rsBokeh1.dofDeriveFocusDistanceFromCamera", 0)
+        # Get the camera shape node
+        cameraShape = cmds.listRelatives("Camera", shapes=True)[0]
+        # Connect rsBokeh1 to camera's lens shader
+        cmds.connectAttr("rsBokeh1.message", f"{cameraShape}.rsLensShader", force=True)
+        print("Created rsBokeh1 node and connected to camera lens shader.")
+    else:
+        rsBokeh1 = "rsBokeh1"
 
-    if not cmds.attributeQuery("dofFocusDistance", node="rsBokeh1", exists=True):
-        cmds.warning("rsBokeh1.dofFocusDistance attribute does not exist.")
-        return
-
-    cmds.connectAttr(f"{distance_node}.distance", "rsBokeh1.dofFocusDistance", force=True)
-    print(f"Connected DOF locator to {cam_locator} and linked distance to rsBokeh1.dofFocusDistance.")
+    cmds.connectAttr(f"{distance_node}.distance", f"{rsBokeh1}.dofFocusDistance", force=True)
+    print(f"Connected DOF locator and linked distance to {rsBokeh1}.dofFocusDistance.")
 
 # Run the functions
 locator_name = rename_selected_locator()

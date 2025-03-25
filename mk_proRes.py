@@ -28,9 +28,12 @@ def find_image_sequence_from_maya_settings():
         "ntsc": 30,
         "show": 48,
         "palf": 50,
-        "ntscf": 60
+        "ntscf": 60,
+        "59.94fps": 59.94  # Added 59.94 FPS mapping
     }
     fps = fps_mapping.get(cmds.currentUnit(q=True, time=True), 24)  # Default to 24 FPS if not found
+    # Debug: Check Maya's time unit setting and computed fps
+    print(f"Scene frame rate detected: {cmds.currentUnit(q=True, time=True)} -> {fps} FPS")
 
     start_frame = int(cmds.getAttr("defaultRenderGlobals.startFrame"))
     end_frame = int(cmds.getAttr("defaultRenderGlobals.endFrame"))
