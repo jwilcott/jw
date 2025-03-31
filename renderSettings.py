@@ -5,6 +5,7 @@ import maya.cmds as cmds
 # Render Settings
 cmds.setAttr("redshiftOptions.imageFormat", 2)  # PNG
 cmds.setAttr("defaultRenderGlobals.animation", 1)  # Enable Animation
+cmds.setAttr("defaultRenderGlobals.imageFilePrefix", "<scene>/<scene>", type="string")  # Add scene name prefix
 cmds.setAttr("redshiftOptions.interactiveRenderingMode", 2)  # Buckets
 cmds.setAttr("redshiftOptions.denoisingEnabled", 1)  # Denoise
 cmds.setAttr("redshiftOptions.denoiseEngine", 3)  # OptiX
