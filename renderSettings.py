@@ -25,4 +25,7 @@ if not cmds.objExists("Camera"):
         farClipPlane=10000
     )[0]
 
+    # Rename camera shape node to Camera
+    cmds.rename(cam, "Camera")
+
 print("Render settings applied successfully.")
