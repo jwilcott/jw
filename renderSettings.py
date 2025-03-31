@@ -1,6 +1,6 @@
 #Set my favorite render settings for Redshift in Maya
 
-import maya.cmds as cmds
+import maya.cmds as cmds # type: ignore
 
 # Render Settings
 cmds.setAttr("redshiftOptions.imageFormat", 2)  # PNG

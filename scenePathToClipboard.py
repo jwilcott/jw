@@ -1,4 +1,4 @@
-import maya.cmds as cmds
+import maya.cmds as cmds # type: ignore
 import pyperclip
 
 def copy_scene_path_to_clipboard():
