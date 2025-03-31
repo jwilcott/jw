@@ -1,7 +1,7 @@
 # Bakes "Camera" and all locators with "AE" in the name
 # Also sets "Camera" as non-renderable
 
-import maya.cmds as cmds
+import maya.cmds as cmds # type: ignore
 import os
 
 def bake_object(obj_name):
