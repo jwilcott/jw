@@ -1,3 +1,5 @@
+#Convert .Move or .MP4 to JPG sequence for animated textures and image planes
+
 import os
 import subprocess
 import maya.cmds as cmds # type: ignore

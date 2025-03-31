@@ -68,7 +68,10 @@ def assign_redshift_shader():
             else:
                 print(f"Texture node {texture_node} is not a file node.")
         else:
-            print(f"No file texture connected to {phong_shader}.color")
+            # If no texture is connected, get and transfer the color value from the Phong shader
+            phong_color = cmds.getAttr(f"{phong_shader}.color")[0]
+            cmds.setAttr(f"{shader}.diffuse_color", *phong_color, type="double3")
+            print(f"Transferred color value {phong_color} from {phong_shader} to {shader}.diffuse_color")
 
         # Create a shading group if it doesn't exist
         if not cmds.objExists(shading_group_name):
