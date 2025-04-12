@@ -73,6 +73,23 @@ def assign_redshift_shader():
             cmds.setAttr(f"{shader}.diffuse_color", *phong_color, type="double3")
             print(f"Transferred color value {phong_color} from {phong_shader} to {shader}.diffuse_color")
 
+        # Find bump node connected to the Phong shader's normalCamera attribute
+        bump_node = cmds.listConnections(f"{phong_shader}.normalCamera", source=True, destination=False, plugs=True) or []
+        print(f"Bump node connections: {bump_node}")
+
+        if bump_node:
+            bump_node_name = bump_node[0].split('.')[0]  # Get just the node name
+            print(f"Bump node identified: {bump_node_name}")
+
+            # Ensure it is a bump node before connecting
+            if cmds.nodeType(bump_node_name) == "bump2d":
+                cmds.connectAttr(f"{bump_node_name}.outNormal", f"{shader}.bump_input", force=True)
+                print(f"Connected {bump_node_name}.outNormal to {shader}.bump_input")
+            else:
+                print(f"Bump node {bump_node_name} is not a bump2d node.")
+        else:
+            print(f"No bump node connected to {phong_shader}.normalCamera")
+
         # Create a shading group if it doesn't exist
         if not cmds.objExists(shading_group_name):
             shading_group = cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=shading_group_name)

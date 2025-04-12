@@ -1,4 +1,5 @@
-#This script renames a selected locator to "DOF", creates a CamLocator parented to the Camera, and connects the DOF locator to the CamLocator with a distanceBetween node, linking the distance to rsBokeh1.dofFocusDistance.
+#Be sure to first click on Bokeh checkbox to properly connect it to the camera.
+#This script renames a selected locator to "DOF", creates a CamLocator parented to the Camera, and connects the DOF locator to the CamLocator with a distanceBetween node, linking the distance to all RedshiftBokeh nodes' dofFocusDistance.
 
 import maya.cmds as cmds
 
@@ -42,7 +43,7 @@ def create_cam_locator():
 
     return cam_locator
 
-# Function to connect DOF locator to the CamLocator with a distanceBetween node and link to rsBokeh1.dofFocusDistance
+# Function to connect DOF locator to the CamLocator with a distanceBetween node and link to all RedshiftBokeh nodes' dofFocusDistance
 def connect_dof_to_cam_locator():
     # Ensure DOF locator exists
     if not cmds.objExists("DOF"):
@@ -63,20 +64,19 @@ def connect_dof_to_cam_locator():
     # Connect the CamLocator to the distanceBetween node
     cmds.connectAttr(f"{cam_locator}.worldPosition[0]", f"{distance_node}.point2")
 
-    # Connect the distance output to rsBokeh1.dofFocusDistance
-    if not cmds.objExists("rsBokeh1"):
-        rsBokeh1 = cmds.createNode("RedshiftBokeh", name="rsBokeh1")
-        cmds.setAttr("rsBokeh1.dofDeriveFocusDistanceFromCamera", 0)
-        # Get the camera shape node
-        cameraShape = cmds.listRelatives("Camera", shapes=True)[0]
-        # Connect rsBokeh1 to camera's lens shader
-        cmds.connectAttr("rsBokeh1.message", f"{cameraShape}.rsLensShader", force=True)
-        print("Created rsBokeh1 node and connected to camera lens shader.")
-    else:
-        rsBokeh1 = "rsBokeh1"
+    # Find all RedshiftBokeh nodes in the scene
+    bokeh_nodes = cmds.ls(type="RedshiftBokeh")
+    if not bokeh_nodes:
+        cmds.warning("No RedshiftBokeh nodes found in the scene.")
+        return
 
-    cmds.connectAttr(f"{distance_node}.distance", f"{rsBokeh1}.dofFocusDistance", force=True)
-    print(f"Connected DOF locator and linked distance to {rsBokeh1}.dofFocusDistance.")
+    # Connect the distance output to each RedshiftBokeh node's dofFocusDistance
+    for bokeh_node in bokeh_nodes:
+        cmds.setAttr(f"{bokeh_node}.dofDeriveFocusDistanceFromCamera", 0)
+        cmds.connectAttr(f"{distance_node}.distance", f"{bokeh_node}.dofFocusDistance", force=True)
+        print(f"Connected distance to {bokeh_node}.dofFocusDistance.")
+
+    print("Connected DOF locator and linked distance to all RedshiftBokeh nodes.")
 
 # Run the functions
 locator_name = rename_selected_locator()
