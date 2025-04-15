@@ -63,7 +63,7 @@ def create_playblast():
         # Create the playblast (on-screen, but does NOT open the file)
         cmds.playblast(format="qt", compression="H.264", quality=90,
                        filename=mov_path, forceOverwrite=True,
-                       clearCache=True, percent=50,
+                       clearCache=True, percent=100,
                        showOrnaments=False, offScreen=False,  # Keeps it on-screen
                        viewer=False,  # Prevents auto-opening in VLC or any media player
                        widthHeight=[cmds.getAttr("defaultResolution.width") // 2,
