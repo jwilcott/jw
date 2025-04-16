@@ -38,7 +38,7 @@ def version_up_scene():
     else:
         # If no version string found, append _v001 before the extension
         base, extdummy = os.path.splitext(filename)
-        new_filename = base + '_v001' + extdummy
+        new_filename = base + '_v02' + extdummy
 
     new_filepath = os.path.join(directory, new_filename)
     

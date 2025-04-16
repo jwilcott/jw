@@ -70,18 +70,18 @@ def select_lowest_center_edge_loop():
             cmds.warning(f"No edge loop found near the lowest part of the bounding box for {obj}.")
 
 def place_joint_chain_on_edge_loop(obj_name):
-    # Get the selected edge loop
-    edge_loop = cmds.ls(selection=True, flatten=True)
-    if not edge_loop:
-        cmds.warning(f"No edge loop selected for {obj_name}. Please select an edge loop.")
+    # Get the selected edges or edge loop
+    edge_selection = cmds.ls(selection=True, flatten=True)
+    if not edge_selection:
+        cmds.warning(f"No edge selection found for {obj_name}. Please select edges or an edge loop.")
         return
 
-    # Convert the edge loop to vertices
-    verts = cmds.polyListComponentConversion(edge_loop, toVertex=True)
+    # Convert the edge selection to vertices
+    verts = cmds.polyListComponentConversion(edge_selection, toVertex=True)
     verts = cmds.filterExpand(verts, selectionMask=31)
 
     if not verts:
-        cmds.warning(f"No vertices found in the edge loop for {obj_name}.")
+        cmds.warning(f"No vertices found in the edge selection for {obj_name}.")
         return
 
     # Get the positions of all vertices
@@ -93,11 +93,10 @@ def place_joint_chain_on_edge_loop(obj_name):
     # Sort vertices by their Y position (ascending)
     vert_positions.sort(key=lambda v: v[1][1])
 
-    # Place joints on every other vertex
+    # Place joints on every vertex in the selection
     for i, (vert, pos) in enumerate(vert_positions):
-        if i % 2 == 0:  # Every other vertex
-            joint_name = cmds.joint(position=pos)
-            cmds.inViewMessage(amg=f"<hl>Joint created: {joint_name} for {obj_name}</hl>", pos="topCenter", fade=True)
+        joint_name = cmds.joint(position=pos)
+        cmds.inViewMessage(amg=f"<hl>Joint created: {joint_name} for {obj_name}</hl>", pos="topCenter", fade=True)
 
 # Run the function
 select_lowest_center_edge_loop()
