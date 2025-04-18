@@ -35,8 +35,10 @@ if not cmds.objExists("Camera"):
 
     # Get the shape node of the camera
     camera_shape = cmds.listRelatives("Camera", shapes=True)[0]
+    persp_camera_shape = cmds.listRelatives("persp", shapes=True)[0]
 
     # Set the camera as renderable
     cmds.setAttr(camera_shape + ".renderable", 1)
+    cmds.setAttr(persp_camera_shape + ".renderable", 0) # Disable persp camera
 
 print("Render settings applied successfully.")
