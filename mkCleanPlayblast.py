@@ -60,12 +60,16 @@ def create_playblast():
             cmds.setAttr(f"{camera_shape}.panZoomEnabled", 0)
 
     try:
+        # Get the current audio node on the timeline
+        sound_node = cmds.timeControl('timeControl1', q=True, sound=True)
+
         # Create the playblast (on-screen, but does NOT open the file)
         cmds.playblast(format="qt", compression="H.264", quality=90,
                        filename=mov_path, forceOverwrite=True,
                        clearCache=True, percent=100,
                        showOrnaments=False, offScreen=False,  # Keeps it on-screen
-                       viewer=False,  # Prevents auto-opening in VLC or any media player
+                       viewer=False,  # Prevents auto-opening
+                       sound=sound_node if sound_node else "", # Include sound if available
                        widthHeight=[cmds.getAttr("defaultResolution.width") // 2,
                                     cmds.getAttr("defaultResolution.height") // 2],
                        startTime=cmds.playbackOptions(q=True, minTime=True),
@@ -73,7 +77,7 @@ def create_playblast():
 
         print(f"Playblast saved to: {mov_path}")
 
-        # Convert to GIF using ffmpeg (overwrite existing files)
+        # Convert to GIF using ffmpeg (overwrite existing files) - GIF does not support audio
         ffmpeg_cmd = f'ffmpeg -y -i "{mov_path}" -vf "fps=10,scale=640:-1:flags=lanczos" -loop 0 "{gif_path}"'
         try:
             subprocess.run(ffmpeg_cmd, shell=True, check=True)

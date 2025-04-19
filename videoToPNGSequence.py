@@ -1,4 +1,4 @@
-#Convert .Move or .MP4 to JPG sequence for animated textures and image planes
+#Convert .Move or .MP4 to PNG sequence (with alpha if available) for animated textures and image planes
 
 import os
 import subprocess
@@ -20,15 +20,16 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Build ffmpeg command to extract JPG sequence
-    # Modified: include movie name as prefix for the image sequence
-    output_pattern = os.path.join(output_dir, f"{base_name}_%04d.jpg")
+    # Build ffmpeg command to extract PNG sequence
+    # Modified: include movie name as prefix, output PNG, scale resolution by half, and set compression level
+    output_pattern = os.path.join(output_dir, f"{base_name}_%04d.png") # Changed extension to .png
     command = [
         "ffmpeg",
         "-y",                   # Overwrite output files without asking
         "-i", video_file,       # Input video file
-        "-q:v", "2",            # Image quality setting
-        output_pattern         # Output naming pattern
+        "-vf", "scale=iw/2:ih/2", # Scale video to half width and height
+        "-compression_level", "100", # Set PNG compression level (0-100, 100=max)
+        output_pattern         # Output naming pattern (now PNG)
     ]
     
     # Ensure ffmpeg is in PATH
