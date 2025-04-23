@@ -45,7 +45,9 @@ def version_up_scene():
     # Rename and save the scene to the new file using the determined file type
     cmds.file(rename=new_filepath)
     cmds.file(save=True, type=file_type)
+    
     # Add the new filepath to the recent files list
+    new_filepath = new_filepath.replace('\\', '/')  # Convert backslashes to forward slashes for Maya
     mel.eval('addRecentFile "{}" "{}"'.format(new_filepath, file_type))
     print("Scene versioned up and saved as:", new_filepath)
 
