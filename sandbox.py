@@ -1,3 +1,4 @@
+#joints on edge loop
 import maya.cmds as cmds
 
 def select_lowest_center_edge_loop():
