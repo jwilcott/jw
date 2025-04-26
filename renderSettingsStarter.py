@@ -23,11 +23,14 @@ cmds.setAttr("defaultResolution.height", 1080)  # HD
 if not cmds.objExists("Camera"):
     cam = cmds.camera(
         name="Camera", 
-        position=(0, 0, 10), 
+        position=(0, 4, 16), 
         rotation=(0, 0, 0), 
         focalLength=35, 
         nearClipPlane=0.1, 
-        farClipPlane=10000
+        farClipPlane=10000,
+        displayResolution=True, 
+        displayGateMask=True,
+        overscan=1.3
     )[0]
 
     # Rename camera shape node to Camera
@@ -40,5 +43,22 @@ if not cmds.objExists("Camera"):
     # Set the camera as renderable
     cmds.setAttr(camera_shape + ".renderable", 1)
     cmds.setAttr(persp_camera_shape + ".renderable", 0) # Disable persp camera
+
+    # Set active viewport to look through the new camera
+    current_panel = cmds.getPanel(withFocus=True)
+    if cmds.getPanel(typeOf=current_panel) == "modelPanel":
+        cmds.lookThru(current_panel, "Camera")
+        print(f"Set panel '{current_panel}' to look through 'Camera'.")
+    else:
+        # Fallback if focus isn't on a model panel (e.g., script editor)
+        # Try to find the first visible model panel
+        model_panels = cmds.getPanel(type="modelPanel")
+        visible_model_panels = [p for p in model_panels if cmds.modelEditor(p, query=True, visible=True)]
+        if visible_model_panels:
+            cmds.lookThru(visible_model_panels[0], "Camera")
+            print(f"Set first visible model panel '{visible_model_panels[0]}' to look through 'Camera'.")
+        else:
+             cmds.warning("Could not find an active or visible model panel to set camera.")
+
 
 print("Render settings applied successfully.")
