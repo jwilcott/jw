@@ -1,8 +1,6 @@
-#This script is designed to convert any Phong, Blinn, or Arnold Standard Surface material to a Redshift material in Autodesk Maya
-#Select one or multiple objects and run the script to convert Phong to Redshift Material
-#The script will create a new Redshift material if it doesn't exist and connect the color texture to the diffuse color input
-#The script will also set the Reflection Roughness to 0.5 for the Redshift material
-
+#Converts any Phong, Blinn, or Arnold Standard Surface material Redshift material
+#Color and bump textures are transfered
+#bump depth is set to 0.1
 import pymel.core as pm
 
 def assign_redshift_shader():
@@ -98,6 +96,11 @@ def assign_redshift_shader():
             if bump_node_name.nodeType() == "bump2d":
                 pm.connectAttr(bump_node_name.outNormal, shader.bump_input, force=True)
                 print(f"Connected {bump_node_name}.outNormal to {shader}.bump_input")
+                
+                # Set bump depth to 0.1
+                if bump_node_name.hasAttr("bumpDepth"):
+                    bump_node_name.bumpDepth.set(0.1)
+                    print(f"Set bump depth of {bump_node_name} to 0.1")
             else:
                 print(f"Bump node {bump_node_name} is not a bump2d node.")
         else:
