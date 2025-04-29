@@ -1,4 +1,5 @@
 #Reveal Shader in Attribute Editor for selected object
+#if shader redshift shader is plugged into shading group, it will be selected in the attribute editor
 
 import maya.cmds as cmds
 
@@ -16,17 +17,19 @@ def select_shader_from_selection():
         # Get full paths for shapes to ensure uniqueness
         shapes = cmds.listRelatives(obj, shapes=True, type='shape', fullPath=True)
         if shapes:
-            for shape in shapes: # 'shape' now holds the full path
+            for shape in shapes:
                 # Use the full path of the shape for connection queries
                 shading_groups = cmds.listConnections(shape, type='shadingEngine')
                 if shading_groups:
-                    # Shading group names are usually unique, but check connections from them
                     for sg in shading_groups:
-                        # Ensure we query the specific surfaceShader attribute
+                        # Check for shaders connected to surfaceShader
                         shaders = cmds.listConnections(sg + ".surfaceShader", source=True, destination=False)
+                        # Check for shaders connected to Redshift Surface Shader
+                        rs_shaders = cmds.listConnections(sg + ".rsSurfaceShader", source=True, destination=False)
                         if shaders:
-                            # Use list() to ensure we get unique shader names, though listConnections usually handles this
-                            shaders_to_select.extend(list(set(shaders))) # Use set to ensure uniqueness
+                            shaders_to_select.extend(list(set(shaders)))
+                        if rs_shaders:
+                            shaders_to_select.extend(list(set(rs_shaders)))
 
     if shaders_to_select:
         # Ensure the final list is unique before selecting
