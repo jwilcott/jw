@@ -1,3 +1,4 @@
+#delete animCurves with constant values
 import maya.cmds as cmds
 
 selected = cmds.ls(selection=True)
