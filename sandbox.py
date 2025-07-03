@@ -1,103 +1,70 @@
-#joints on edge loop
 import maya.cmds as cmds
 
-def select_lowest_center_edge_loop():
-    # Check if an edge is already selected
-    selected_edges = cmds.filterExpand(selectionMask=32)
-    if selected_edges:
-        cmds.polySelectSp(loop=True)
-        cmds.inViewMessage(amg="<hl>Using the selected edge loop for joint placement.</hl>", pos="topCenter", fade=True)
-        place_joint_chain_on_edge_loop("Selected Edge Loop")
-        return
+def matches_all(name, keywords):
+    return all(k in name for k in keywords)
 
-    # Get the selected objects
-    selection = cmds.ls(selection=True)
-    if not selection:
-        cmds.warning("No objects selected. Please select one or more objects.")
-        return
+def matches_any(name, keywords):
+    return any(k in name for k in keywords)
 
-    for obj in selection:
-        # Get the bounding box of the object
-        bbox = cmds.exactWorldBoundingBox(obj)
-        min_x, min_y, min_z, max_x, max_y, max_z = bbox
+def find_by_keywords(objs, keywords):
+    return [obj for obj in objs if all(k.lower() in obj.lower() for k in keywords)]
 
-        # Calculate the center of the bounding box in the X and Z axes
-        center_x = (min_x + max_x) / 2
-        center_z = (min_z + max_z) / 2
+# Get the selected object and remove "_Jersey" from its name
+sel = cmds.ls(selection=True)
+if not sel:
+    cmds.warning("No object selected.")
+else:
+    selJersey = sel[0].replace("_Jersey", "")
 
-        # Find the lowest Y value (min_y) and use it to locate the edges near this area
-        # Convert the bounding box center to a point near the lowest part
-        lowest_point = [center_x, min_y, center_z]
+    # Find all objects that contain selJersey in their name and are DAG objects (transforms)
+    matches = cmds.ls(f"*{selJersey}*", type="transform")
+    print(f"Found {len(matches)} matching objects for '{selJersey}':")
+    for obj in matches:
+        print(f"  {obj}")
 
-        # Select the object in component mode (edges)
-        cmds.select(obj + ".e[*]", replace=True)
+    # Find specific objects
+    jersey = find_by_keywords(matches, ["jersey"])
+    bat = find_by_keywords(matches, ["bat"])
+    hat = find_by_keywords(matches, ["hat"])
+    crossed = find_by_keywords(matches, ["crossed"])
+    black_hair = find_by_keywords(matches, ["black", "hair"])
+    blonde_hair = find_by_keywords(matches, ["blonde", "hair"])
+    blue_hair = find_by_keywords(matches, ["blue", "hair"])
+    brown_hair = find_by_keywords(matches, ["brown", "hair"])
+    red_hair = find_by_keywords(matches, ["red", "hair"])
 
-        # Find the closest edge loop to the lowest point
-        edges = cmds.filterExpand(selectionMask=32)  # Get all edges
-        closest_edge = None
-        closest_distance = float("inf")
+    # Define groups
+    group_dict = {
+        f"{selJersey}_Base": jersey + bat + hat,
+        f"{selJersey}_BaseCrossed": jersey + crossed + hat,
+        f"{selJersey}_Hair_Black": jersey + bat + black_hair,
+        f"{selJersey}_Hair_Black_Crossed": jersey + crossed + black_hair,
+        f"{selJersey}_Hair_Blonde": jersey + bat + blonde_hair,
+        f"{selJersey}_Hair_Blonde_Crossed": jersey + crossed + blonde_hair,
+        f"{selJersey}_Hair_Blue": jersey + bat + blue_hair,
+        f"{selJersey}_Hair_Blue_Crossed": jersey + crossed + blue_hair,
+        f"{selJersey}_Hair_Brown": jersey + bat + brown_hair,
+        f"{selJersey}_Hair_Brown_Crossed": jersey + crossed + brown_hair,
+        f"{selJersey}_Hair_Red": jersey + bat + red_hair,
+        f"{selJersey}_Hair_Red_Crossed": jersey + crossed + red_hair,
+    }
 
-        for edge in edges:
-            # Get the vertices of the edge
-            verts = cmds.polyListComponentConversion(edge, toVertex=True)
-            verts = cmds.filterExpand(verts, selectionMask=31)
+    # Remove duplicates in each group and skip groups missing a hair color
+    for group_name, objs in group_dict.items():
+        # Skip group if it's a hair group and the hair color object is missing
+        if "Hair_Black" in group_name and not black_hair:
+            continue
+        if "Hair_Blonde" in group_name and not blonde_hair:
+            continue
+        if "Hair_Blue" in group_name and not blue_hair:
+            continue
+        if "Hair_Brown" in group_name and not brown_hair:
+            continue
+        if "Hair_Red" in group_name and not red_hair:
+            continue
 
-            # Calculate the average position of the edge
-            edge_center = [0, 0, 0]
-            for vert in verts:
-                pos = cmds.pointPosition(vert, world=True)
-                edge_center[0] += pos[0]
-                edge_center[1] += pos[1]
-                edge_center[2] += pos[2]
-            edge_center = [coord / len(verts) for coord in edge_center]
-
-            # Calculate the distance to the lowest point
-            distance = ((edge_center[0] - lowest_point[0]) ** 2 +
-                        (edge_center[1] - lowest_point[1]) ** 2 +
-                        (edge_center[2] - lowest_point[2]) ** 2) ** 0.5
-
-            # Update the closest edge if this one is closer
-            if distance < closest_distance:
-                closest_distance = distance
-                closest_edge = edge
-
-        # Select the closest edge loop
-        if closest_edge:
-            cmds.select(closest_edge, replace=True)
-            cmds.polySelectSp(loop=True)
-            cmds.inViewMessage(amg=f"<hl>Center edge loop selected for {obj} near the lowest part of the bounding box.</hl>", pos="topCenter", fade=True)
-            place_joint_chain_on_edge_loop(obj)
-        else:
-            cmds.warning(f"No edge loop found near the lowest part of the bounding box for {obj}.")
-
-def place_joint_chain_on_edge_loop(obj_name):
-    # Get the selected edges or edge loop
-    edge_selection = cmds.ls(selection=True, flatten=True)
-    if not edge_selection:
-        cmds.warning(f"No edge selection found for {obj_name}. Please select edges or an edge loop.")
-        return
-
-    # Convert the edge selection to vertices
-    verts = cmds.polyListComponentConversion(edge_selection, toVertex=True)
-    verts = cmds.filterExpand(verts, selectionMask=31)
-
-    if not verts:
-        cmds.warning(f"No vertices found in the edge selection for {obj_name}.")
-        return
-
-    # Get the positions of all vertices
-    vert_positions = []
-    for vert in verts:
-        pos = cmds.pointPosition(vert, world=True)
-        vert_positions.append((vert, pos))
-
-    # Sort vertices by their Y position (ascending)
-    vert_positions.sort(key=lambda v: v[1][1])
-
-    # Place joints on every vertex in the selection
-    for i, (vert, pos) in enumerate(vert_positions):
-        joint_name = cmds.joint(position=pos)
-        cmds.inViewMessage(amg=f"<hl>Joint created: {joint_name} for {obj_name}</hl>", pos="topCenter", fade=True)
-
-# Run the function
-select_lowest_center_edge_loop()
+        unique_objs = list(dict.fromkeys(objs))  # preserves order, removes duplicates
+        if unique_objs:
+            dup_objs = cmds.duplicate(unique_objs, rr=True)
+            group = cmds.group(dup_objs, name=group_name)
+            cmds.parent(group, world=True)
