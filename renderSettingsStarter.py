@@ -16,8 +16,7 @@ cmds.setAttr("redshiftOptions.GIEnabled", 1)  # Enable Global Illumination
 cmds.setAttr("redshiftOptions.secondaryGIEngine", 4)  # Brute Force GI
 cmds.setAttr("redshiftOptions.bucketSize", 256)  # Big Buckets
 cmds.setAttr("redshiftOptions.unifiedAdaptiveErrorThreshold", 1.0)  # Low Res
-cmds.setAttr("defaultResolution.width", 1920)  # Square
-cmds.setAttr("defaultResolution.height", 1920)  # Square
+
 
 # Uncheck any CPU device for Redshift (disable CPU rendering)
 try:
@@ -47,7 +46,8 @@ if not cmds.objExists("Camera"):
             print(f"Set panel '{current_panel}' to look through 'Camera'.")
         else:
             model_panels = cmds.getPanel(type="modelPanel")
-            visible_model_panels = [p for p in model_panels if cmds.modelEditor(p, query=True, visible=True)]
+            # Use cmds.modelPanel to check visibility instead of cmds.modelEditor
+            visible_model_panels = [p for p in model_panels if cmds.modelPanel(p, query=True, visible=True)]
             if visible_model_panels:
                 cmds.lookThru(visible_model_panels[0], "Camera")
                 print(f"Set first visible model panel '{visible_model_panels[0]}' to look through 'Camera'.")
@@ -71,12 +71,14 @@ else:
         # Fallback if focus isn't on a model panel (e.g., script editor)
         # Try to find the first visible model panel
         model_panels = cmds.getPanel(type="modelPanel")
-        visible_model_panels = [p for p in model_panels if cmds.modelEditor(p, query=True, visible=True)]
+        visible_model_panels = [p for p in model_panels if cmds.modelPanel(p, query=True, visible=True)]
         if visible_model_panels:
             cmds.lookThru(visible_model_panels[0], "Camera")
             print(f"Set first visible model panel '{visible_model_panels[0]}' to look through 'Camera'.")
         else:
              cmds.warning("Could not find an active or visible model panel to set camera.")
 
+cmds.setAttr("defaultResolution.width", 1920)  # Square
+cmds.setAttr("defaultResolution.height", 1920)  # Square
 
 print("Render settings applied successfully.")
