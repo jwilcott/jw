@@ -80,5 +80,7 @@ else:
 
 cmds.setAttr("defaultResolution.width", 1920)  # Square
 cmds.setAttr("defaultResolution.height", 1920)  # Square
+cmds.setAttr("defaultResolution.deviceAspectRatio", 1)
+cmds.setAttr("defaultResolution.pixelAspect", 1)
 
 print("Render settings applied successfully.")
