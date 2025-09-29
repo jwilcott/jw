@@ -1,6 +1,7 @@
 # Bakes "Camera" and all locators with "AE" in the name
 # Also sets "Camera" as non-renderable
 # adds "_null" to locators and exports the group as .ma file to the render directory
+# REMEMBER to check if focal length is correct in in AE after importing
 
 import maya.cmds as cmds
 import os

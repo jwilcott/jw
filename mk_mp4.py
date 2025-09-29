@@ -25,6 +25,7 @@ def find_image_sequence_from_maya_settings():
     fps_mapping = {
         "film": 24,
         "pal": 25,
+        "29.97": 29.97,
         "ntsc": 30,
         "show": 48,
         "palf": 50,
