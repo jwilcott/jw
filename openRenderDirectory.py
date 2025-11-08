@@ -1,6 +1,7 @@
 #Open the file explorer to the directory containing the rendered image based on Maya's render settings.
 
 import os
+import re
 import subprocess
 import maya.cmds as cmds
 
@@ -29,9 +30,26 @@ def construct_render_path():
     if "<scene>" in prefix:
         prefix = prefix.replace("<scene>", scene_name)
 
+    # Helper to replace tokens case-insensitively and everywhere
+    def _replace_token_ci(text, token, replacement):
+        return re.sub(re.escape(token), replacement, text, flags=re.IGNORECASE)
+
+    # Compute current render layer name once
+    current_layer = cmds.editRenderLayerGlobals(q=True, currentRenderLayer=True)
+    layer_name = current_layer.split('|')[-1] if current_layer else "defaultRenderLayer"
+
+    # Replace <renderlayer> in the prefix (all instances, case-insensitive)
+    if "<renderlayer>".lower() in prefix.lower():
+        prefix = _replace_token_ci(prefix, "<renderlayer>", layer_name)
+
+
     # Construct the full path
     frame_number = "0" * frame_padding  # Default frame number (e.g., "0000")
     full_path = os.path.join(render_directory, f"{prefix}.{frame_number}.{extension}")
+
+    # Also replace <renderlayer> anywhere in the final file path (defensive, handles directory-level tokens)
+    if "<renderlayer>".lower() in full_path.lower():
+        full_path = _replace_token_ci(full_path, "<renderlayer>", layer_name)
 
     return full_path
 

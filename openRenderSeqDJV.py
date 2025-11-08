@@ -1,6 +1,7 @@
 #Open rendered sequence in DJV
 
 import os
+import re
 import subprocess
 import maya.cmds as cmds
 
@@ -29,9 +30,28 @@ def construct_render_path():
     if "<scene>" in prefix:
         prefix = prefix.replace("<scene>", scene_name)
 
+    # Helper for case-insensitive token replacement
+    def _replace_token_ci(text, token, replacement):
+        return re.sub(re.escape(token), replacement, text, flags=re.IGNORECASE)
+
+    # Current render layer name (fallback to defaultRenderLayer if query fails)
+    try:
+        current_layer = cmds.editRenderLayerGlobals(q=True, currentRenderLayer=True)
+    except Exception:
+        current_layer = 'defaultRenderLayer'
+    layer_name = current_layer.split('|')[-1] if current_layer else 'defaultRenderLayer'
+
+    # Replace all <renderlayer> tokens (case-insensitive) in prefix
+    if '<renderlayer>' in prefix.lower():
+        prefix = _replace_token_ci(prefix, '<renderlayer>', layer_name)
+
     # Construct the full path
     frame_number = "0" * frame_padding  # Default frame number (e.g., "0000")
     full_path = os.path.join(render_directory, f"{prefix}.{frame_number}.{extension}")
+
+    # Defensive: also replace <renderlayer> if it appears in constructed path
+    if '<renderlayer>' in full_path.lower():
+        full_path = _replace_token_ci(full_path, '<renderlayer>', layer_name)
 
     return full_path
 

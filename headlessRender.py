@@ -19,6 +19,6 @@ if current_file:
     subprocess.Popen(render_cmd, shell=True)
 
     print(f'Started headless Redshift render on GPU(s) {gpu_ids} for file:\n{current_file}')
-    print(f'Rendering frames {start_frame} to {end_frame} by 30')
+    print(f'Rendering frames {start_frame} to {end_frame} by {by_frame}')
 else:
     print("No Maya scene file is open! Please save your file first.")
