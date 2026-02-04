@@ -5,6 +5,7 @@ import os
 import subprocess
 
 def create_playblast():
+    divider = 1.7  # Resolution divider
     # Get scene name and directory
     scene_path = cmds.file(q=True, sceneName=True)
     if not scene_path:
@@ -70,8 +71,8 @@ def create_playblast():
                        showOrnaments=False, offScreen=False,  # Keeps it on-screen
                        viewer=False,  # Prevents auto-opening
                        sound=sound_node if sound_node else "", # Include sound if available
-                       widthHeight=[cmds.getAttr("defaultResolution.width") // 2,
-                                    cmds.getAttr("defaultResolution.height") // 2],
+                       widthHeight=[cmds.getAttr("defaultResolution.width") // divider,
+                                    cmds.getAttr("defaultResolution.height") // divider],
                        startTime=cmds.playbackOptions(q=True, minTime=True),
                        endTime=cmds.playbackOptions(q=True, maxTime=True))
 
