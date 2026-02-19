@@ -12,7 +12,6 @@ def _is_plugin_loaded(plugin_name):
 def load_substance_plugins():
     plugins = [
         "Substance.mll",
-        "substanceconnector.mll",
         "substanceworkflow.py",
         "substancemaya.mll",
     ]
