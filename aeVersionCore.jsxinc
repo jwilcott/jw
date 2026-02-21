@@ -1,0 +1,270 @@
+// Shared core for AE version up/down scripts.
+
+if (typeof AEVersions === 'undefined') {
+    var AEVersions = (function () {
+        var MAX_VERSION_JUMPS = 50;
+
+        function isDigit(ch) {
+            return ch >= '0' && ch <= '9';
+        }
+
+        function isAlphaNum(ch) {
+            return (ch >= '0' && ch <= '9') ||
+                   (ch >= 'A' && ch <= 'Z') ||
+                   (ch >= 'a' && ch <= 'z');
+        }
+
+        function findLastVersionToken(name) {
+            var last = null;
+            var i, j, ch, prev;
+
+            for (i = 0; i < name.length - 1; i++) {
+                ch = name.charAt(i);
+                if ((ch === 'v' || ch === 'V') && isDigit(name.charAt(i + 1))) {
+                    prev = (i === 0) ? '' : name.charAt(i - 1);
+                    if (i === 0 || !isAlphaNum(prev)) {
+                        j = i + 1;
+                        while (j < name.length && isDigit(name.charAt(j))) {
+                            j++;
+                        }
+
+                        last = {
+                            start: i,
+                            end: j,
+                            letter: ch,
+                            digits: name.substring(i + 1, j)
+                        };
+                    }
+                }
+            }
+
+            return last;
+        }
+
+        function setVersionInName(fileName, token, versionNumber) {
+            if (!token) {
+                return null;
+            }
+
+            var width = token.digits.length;
+            var padded = (new Array(width + 1).join('0') + versionNumber).slice(-width);
+            var replacement = token.letter + padded;
+
+            return fileName.substring(0, token.start) + replacement + fileName.substring(token.end);
+        }
+
+        function findCandidateInParentSiblings(srcFile, candidateName) {
+            var parentDir = srcFile.parent && srcFile.parent.parent ? srcFile.parent.parent : null;
+            if (!parentDir || !(parentDir instanceof Folder) || !parentDir.exists) {
+                return null;
+            }
+
+            var entries = parentDir.getFiles();
+            var folders = [];
+            var i;
+
+            for (i = 0; i < entries.length; i++) {
+                if (entries[i] instanceof Folder) {
+                    folders.push(entries[i]);
+                }
+            }
+
+            folders.sort(function (a, b) {
+                var an = a.name.toLowerCase();
+                var bn = b.name.toLowerCase();
+                if (an < bn) return -1;
+                if (an > bn) return 1;
+                return 0;
+            });
+
+            for (i = 0; i < folders.length; i++) {
+                if (folders[i].fsName === srcFile.parent.fsName) {
+                    continue;
+                }
+
+                var siblingPath = folders[i].fsName + '/' + candidateName;
+                var siblingFile = new File(siblingPath);
+                if (siblingFile.exists) {
+                    return siblingFile;
+                }
+            }
+
+            return null;
+        }
+
+        function findVersionFile(srcFile, direction) {
+            var token = findLastVersionToken(srcFile.name);
+            if (!token) {
+                return null;
+            }
+
+            var currentVersion = parseInt(token.digits, 10);
+            var step;
+
+            for (step = 1; step <= MAX_VERSION_JUMPS; step++) {
+                var targetVersion = currentVersion + (step * direction);
+                if (targetVersion < 0) {
+                    break;
+                }
+
+                var candidateName = setVersionInName(srcFile.name, token, targetVersion);
+
+                var sameFolder = new File(srcFile.parent.fsName + '/' + candidateName);
+                if (sameFolder.exists) {
+                    return sameFolder;
+                }
+
+                var siblingFolderFile = findCandidateInParentSiblings(srcFile, candidateName);
+                if (siblingFolderFile) {
+                    return siblingFolderFile;
+                }
+            }
+
+            return null;
+        }
+
+        function replaceFootage(footageItem, newFile) {
+            var isStill = true;
+
+            try {
+                isStill = footageItem.mainSource.isStill;
+            } catch (e) {
+                isStill = true;
+            }
+
+            if (!isStill && footageItem.replaceWithSequence) {
+                footageItem.replaceWithSequence(newFile, false);
+            } else {
+                footageItem.replace(newFile);
+            }
+        }
+
+        function collectTargets() {
+            var targets = [];
+            var seenFootageIds = {};
+
+            if (!app.project) {
+                return targets;
+            }
+
+            var comp = app.project.activeItem;
+            var layers = (comp instanceof CompItem) ? comp.selectedLayers : null;
+            var i;
+
+            if (layers && layers.length > 0) {
+                for (i = 0; i < layers.length; i++) {
+                    var layer = layers[i];
+                    if (!(layer instanceof AVLayer) || !layer.source || !(layer.source instanceof FootageItem)) {
+                        continue;
+                    }
+
+                    var layerFootage = layer.source;
+                    if (seenFootageIds[layerFootage.id]) {
+                        continue;
+                    }
+                    seenFootageIds[layerFootage.id] = true;
+
+                    targets.push({
+                        name: layer.name,
+                        footage: layerFootage
+                    });
+                }
+
+                return targets;
+            }
+
+            var selection = app.project.selection;
+            if (!selection || selection.length === 0) {
+                return targets;
+            }
+
+            for (i = 0; i < selection.length; i++) {
+                var item = selection[i];
+                if (!(item instanceof FootageItem)) {
+                    continue;
+                }
+
+                if (seenFootageIds[item.id]) {
+                    continue;
+                }
+                seenFootageIds[item.id] = true;
+
+                targets.push({
+                    name: item.name,
+                    footage: item
+                });
+            }
+
+            return targets;
+        }
+
+        function run(direction, logPrefix) {
+            var prefix = logPrefix || 'Version';
+
+            if (!app.project) {
+                $.writeln(prefix + ': no open project.');
+                return;
+            }
+
+            var targets = collectTargets();
+            if (targets.length === 0) {
+                $.writeln(prefix + ': select timeline layers or Project panel footage items.');
+                return;
+            }
+
+            var updated = 0;
+            var skipped = [];
+            var groupName = direction > 0 ? 'Version Up Selected Sources' : 'Version Down Selected Sources';
+
+            app.beginUndoGroup(groupName);
+
+            for (var i = 0; i < targets.length; i++) {
+                var target = targets[i];
+                var footage = target.footage;
+
+                if (!footage.mainSource || !footage.mainSource.file) {
+                    skipped.push(target.name + ' (no file source)');
+                    continue;
+                }
+
+                var srcFile = footage.mainSource.file;
+                var token = findLastVersionToken(srcFile.name);
+                if (!token) {
+                    skipped.push(target.name + ' (no v## token found)');
+                    continue;
+                }
+
+                var newFile = findVersionFile(srcFile, direction);
+                if (!newFile) {
+                    if (direction > 0) {
+                        skipped.push(target.name + ' (next version not found in current/sibling folders)');
+                    } else {
+                        skipped.push(target.name + ' (previous version not found in current/sibling folders)');
+                    }
+                    continue;
+                }
+
+                try {
+                    replaceFootage(footage, newFile);
+                    updated++;
+                } catch (err) {
+                    skipped.push(target.name + ' (replace failed)');
+                }
+            }
+
+            app.endUndoGroup();
+
+            var label = direction > 0 ? 'Versioned up' : 'Versioned down';
+            var msg = label + ': ' + updated;
+            if (skipped.length) {
+                msg += '\n\nSkipped:\n- ' + skipped.join('\n- ');
+            }
+
+            $.writeln(msg);
+        }
+
+        return {
+            run: run
+        };
+    })();
+}
