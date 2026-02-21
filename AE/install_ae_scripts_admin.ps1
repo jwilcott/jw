@@ -4,7 +4,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Ensure-Administrator {
+function Start-AdminElevationIfNeeded {
     $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
     $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -38,7 +38,7 @@ function Copy-IfExists {
     Write-Host "Copied: $(Split-Path -Leaf $From) -> $To"
 }
 
-Ensure-Administrator
+Start-AdminElevationIfNeeded
 
 if (-not (Test-Path -LiteralPath $SourceDir)) {
     throw "Source directory does not exist: $SourceDir"

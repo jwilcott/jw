@@ -263,8 +263,89 @@ if (typeof AEVersions === 'undefined') {
             $.writeln(msg);
         }
 
+        function getOutputFolderFromQueueItem(queueItem) {
+            if (!queueItem || !queueItem.numOutputModules) {
+                return null;
+            }
+
+            for (var i = queueItem.numOutputModules; i >= 1; i--) {
+                var outputFile = null;
+
+                try {
+                    var module = queueItem.outputModule(i);
+                    outputFile = module ? module.file : null;
+                } catch (e) {
+                    outputFile = null;
+                }
+
+                if (outputFile && outputFile.parent) {
+                    return outputFile.parent;
+                }
+            }
+
+            return null;
+        }
+
+        function getLastRenderFolder() {
+            if (!app.project || !app.project.renderQueue) {
+                return null;
+            }
+
+            var queue = app.project.renderQueue;
+            var fallback = null;
+
+            for (var i = queue.numItems; i >= 1; i--) {
+                var item = queue.item(i);
+                var folder = getOutputFolderFromQueueItem(item);
+                if (!folder) {
+                    continue;
+                }
+
+                if (item.status === RQItemStatus.DONE) {
+                    return folder;
+                }
+
+                if (!fallback) {
+                    fallback = folder;
+                }
+            }
+
+            return fallback;
+        }
+
+        function openLastRenderedFolder(logPrefix) {
+            var prefix = logPrefix || 'Version';
+            var folder = getLastRenderFolder();
+
+            if (!folder) {
+                $.writeln(prefix + ': no render queue output folder found.');
+                return false;
+            }
+
+            if (!folder.exists) {
+                $.writeln(prefix + ': folder does not exist on disk: ' + folder.fsName);
+                return false;
+            }
+
+            var opened = false;
+            try {
+                opened = folder.execute();
+            } catch (err) {
+                opened = false;
+            }
+
+            if (!opened) {
+                $.writeln(prefix + ': failed to open folder: ' + folder.fsName);
+                return false;
+            }
+
+            $.writeln(prefix + ': opened ' + folder.fsName);
+            return true;
+        }
+
         return {
-            run: run
+            run: run,
+            openLastRenderedFolder: openLastRenderedFolder
         };
     })();
 }

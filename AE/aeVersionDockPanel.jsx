@@ -1,7 +1,7 @@
 // After Effects ScriptUI Panel: Version Up / Version Down for selected sources.
 // Supports selected timeline layers (active comp) or selected footage in Project panel.
 
-#include "aeVersionCore.jsxinc"
+$.evalFile(File(File($.fileName).parent.fsName + '/aeVersionCore.jsxinc'));
 
 (function versionDockPanel(thisObj) {
     function runVersion(direction) {
@@ -19,6 +19,7 @@
 
         var btnUp = group.add('button', undefined, 'Version Up');
         var btnDown = group.add('button', undefined, 'Version Down');
+        var btnOpenLastRender = group.add('button', undefined, 'Open Last Render Folder');
 
         btnUp.onClick = function () {
             runVersion(1);
@@ -26,6 +27,10 @@
 
         btnDown.onClick = function () {
             runVersion(-1);
+        };
+
+        btnOpenLastRender.onClick = function () {
+            AEVersions.openLastRenderedFolder('Version Panel');
         };
 
         panel.layout.layout(true);
