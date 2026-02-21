@@ -2,7 +2,7 @@
 
 if (typeof AEVersions === 'undefined') {
     var AEVersions = (function () {
-        var MAX_VERSION_JUMPS = 50;
+        var MAX_VERSION_JUMPS = 5;
 
         function isDigit(ch) {
             return ch >= '0' && ch <= '9';
