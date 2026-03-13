@@ -7,16 +7,32 @@ import subprocess
 import maya.cmds as cmds
 import glob
 
+def resolve_render_tokens(path_value):
+    """
+    Resolve supported Maya render tokens in a path-like string.
+    """
+    if not path_value:
+        return path_value
+
+    resolved_value = path_value
+
+    if "<scene>" in resolved_value:
+        scene_name = os.path.splitext(os.path.basename(cmds.file(q=True, sceneName=True)))[0]
+        resolved_value = resolved_value.replace("<scene>", scene_name)
+
+    if "<renderLayer>" in resolved_value:
+        render_layer = cmds.editRenderLayerGlobals(query=True, currentRenderLayer=True)
+        resolved_value = resolved_value.replace("<renderLayer>", render_layer)
+
+    return resolved_value
+
 def find_image_sequence_from_maya_settings():
     """
     Find the image sequence based on Maya's render settings.
     """
     # Get render settings from Maya
     render_dir = cmds.workspace(q=True, rd=True) + cmds.workspace(fileRuleEntry="images")
-    file_prefix = cmds.getAttr("defaultRenderGlobals.imageFilePrefix")
-    if "<scene>" in file_prefix:
-        scene_name = os.path.splitext(os.path.basename(cmds.file(q=True, sceneName=True)))[0]
-        file_prefix = file_prefix.replace("<scene>", scene_name)
+    file_prefix = resolve_render_tokens(cmds.getAttr("defaultRenderGlobals.imageFilePrefix"))
 
     frame_padding = cmds.getAttr("defaultRenderGlobals.extensionPadding")
     image_format = cmds.getAttr("defaultRenderGlobals.imageFormat")

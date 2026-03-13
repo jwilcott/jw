@@ -1,34 +1,55 @@
 import maya.cmds as cmds
+import maya.mel as mel
 
-def delete_unused_materials():
+
+DEFAULT_MATERIALS = {"lambert1", "particleCloud1", "shaderGlow1"}
+
+
+def _material_is_assigned(material):
+    shading_groups = cmds.listConnections(material, type="shadingEngine") or []
+    for shading_group in shading_groups:
+        members = cmds.sets(shading_group, q=True) or []
+        if members:
+            return True
+    return False
+
+
+def _manual_delete_unused_materials():
     deleted = []
-    materials = cmds.ls(materials=True)
+    materials = cmds.ls(materials=True) or []
 
-    # Skip default materials
-    default_materials = ['lambert1', 'particleCloud1', 'shaderGlow1']
-    
-    for mat in materials:
-        if mat in default_materials:
+    for material in materials:
+        if material in DEFAULT_MATERIALS:
+            continue
+        if _material_is_assigned(material):
             continue
 
-        # Get the shading groups connected to the material
-        sg = cmds.listConnections(mat, type='shadingEngine') or []
-        is_used = False
+        try:
+            cmds.delete(material)
+            deleted.append(material)
+        except Exception as exc:
+            print("Failed to delete {}: {}".format(material, exc))
 
-        for sg_node in sg:
-            # Check if that shading group is assigned to any geometry
-            geo = cmds.sets(sg_node, q=True)
-            if geo:
-                is_used = True
-                break
+    return deleted
 
-        if not is_used:
-            try:
-                cmds.delete(mat)
-                deleted.append(mat)
-            except Exception as e:
-                print(f"Failed to delete {mat}: {e}")
 
-    print("Deleted unused materials:", deleted)
+def delete_unused_materials():
+    materials_before = set(cmds.ls(materials=True) or [])
+
+    try:
+        # Use Maya's built-in cleanup first; it is more reliable than hand-checking SG usage.
+        result = mel.eval("MLdeleteUnused;")
+        materials_after = set(cmds.ls(materials=True) or [])
+        deleted = sorted(materials_before - materials_after)
+        print("Deleted unused materials: {}".format(deleted))
+        if result is not None:
+            print("Maya cleanup result: {}".format(result))
+        return deleted
+    except Exception as exc:
+        print("Built-in cleanup failed, falling back to manual delete: {}".format(exc))
+        deleted = _manual_delete_unused_materials()
+        print("Deleted unused materials: {}".format(deleted))
+        return deleted
+
 
 delete_unused_materials()
