@@ -26,16 +26,38 @@ def resolve_render_tokens(path_value):
 
     return resolved_value
 
+def normalize_prefix(prefix):
+    if not prefix:
+        return prefix
+    prefix = prefix.replace("\\", "/").strip("/")
+    return prefix
+
+
+def detect_sequence_bounds(input_dir, base_name, frame_padding, extension):
+    pattern = os.path.join(input_dir, f"{base_name}.{'?' * frame_padding}{extension}")
+    candidates = glob.glob(pattern)
+    import re
+    frame_regex = re.compile(rf"^{re.escape(base_name)}\.(\d{{{frame_padding}}}){re.escape(extension)}$")
+
+    frame_numbers = []
+    for fn in candidates:
+        name = os.path.basename(fn)
+        match = frame_regex.match(name)
+        if match:
+            frame_numbers.append(int(match.group(1)))
+
+    return sorted(frame_numbers)
+
 def find_image_sequence_from_maya_settings():
     """
     Find the image sequence based on Maya's render settings.
     """
     # Get render settings from Maya
-    render_dir = cmds.workspace(q=True, rd=True) + cmds.workspace(fileRuleEntry="images")
-    file_prefix = resolve_render_tokens(cmds.getAttr("defaultRenderGlobals.imageFilePrefix"))
+    render_dir = os.path.normpath(cmds.workspace(q=True, rd=True) + cmds.workspace(fileRuleEntry="images"))
+    file_prefix = normalize_prefix(resolve_render_tokens(cmds.getAttr("defaultRenderGlobals.imageFilePrefix")))
 
-    frame_padding = cmds.getAttr("defaultRenderGlobals.extensionPadding")
-    image_format = cmds.getAttr("defaultRenderGlobals.imageFormat")
+    frame_padding = int(cmds.getAttr("defaultRenderGlobals.extensionPadding"))
+    image_format = int(cmds.getAttr("defaultRenderGlobals.imageFormat"))
 
     # Map Maya time units to FPS values
     fps_mapping = {
@@ -60,17 +82,34 @@ def find_image_sequence_from_maya_settings():
     else:
         extension = ".png"  # Default fallback
 
-    frame_pattern = f"{file_prefix}.%0{frame_padding}d{extension}"
-    return render_dir, frame_pattern, extension, fps, start_frame, end_frame, file_prefix
+    prefix_dir = os.path.dirname(file_prefix)
+    base_name = os.path.basename(file_prefix)
+    input_dir = os.path.normpath(os.path.join(render_dir, prefix_dir))
 
-def convert_to_gif(input_dir, frame_pattern, fps, output_file, start_frame, end_frame, file_prefix):
+    frame_pattern = f"{base_name}.%0{frame_padding}d{extension}"
+    return input_dir, frame_pattern, extension, fps, start_frame, end_frame, base_name, frame_padding
+
+def convert_to_gif(input_dir, frame_pattern, fps, output_file, start_frame, end_frame, file_prefix, frame_padding, extension):
     """
     Convert an image sequence into a GIF at half the original render resolution.
     """
-    # Ensure the frame sequence exists
-    image_files = glob.glob(os.path.join(input_dir, file_prefix + ".*"))
-    if not image_files:
-        raise FileNotFoundError(f"No images found matching {file_prefix} in {input_dir}")
+    # Ensure the frame sequence exists and find actual range
+    frame_numbers = detect_sequence_bounds(input_dir, file_prefix, frame_padding, extension)
+    if not frame_numbers:
+        raise FileNotFoundError(f"No images found matching {file_prefix}.{frame_pattern} in {input_dir}")
+
+    actual_start = frame_numbers[0]
+    actual_end = frame_numbers[-1]
+
+    if start_frame < actual_start or end_frame > actual_end:
+        print(f"Warning: requested frame range {start_frame}-{end_frame} is outside detected sequence {actual_start}-{actual_end}.")
+        start_frame = max(start_frame, actual_start)
+        end_frame = min(end_frame, actual_end)
+
+    if start_frame > end_frame:
+        raise ValueError(f"Invalid frame range after clamping: {start_frame}-{end_frame}")
+
+    frame_count = end_frame - start_frame + 1
 
     # Ensure proper quoting of paths with spaces
     input_path = os.path.join(input_dir, frame_pattern).replace("\\", "/")
@@ -79,7 +118,7 @@ def convert_to_gif(input_dir, frame_pattern, fps, output_file, start_frame, end_
     # Debug: Print paths and start frame
     print(f"Input path: {input_path}")
     print(f"Output file: {output_file}")
-    print(f"Start frame: {start_frame}")
+    print(f"Requested frame range: {start_frame}-{end_frame} ({frame_count} frames)")
 
     # Add overwrite flag if the file already exists
     if os.path.exists(output_file):
@@ -94,6 +133,7 @@ def convert_to_gif(input_dir, frame_pattern, fps, output_file, start_frame, end_
         "-framerate", str(fps),
         "-start_number", str(start_frame),
         "-i", input_path,
+        "-frames:v", str(frame_count),
         "-vf", "scale=iw/2:ih/2,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
         output_file
     ]
@@ -131,10 +171,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        input_dir, frame_pattern, extension, fps, start_frame, end_frame, file_prefix = find_image_sequence_from_maya_settings()
+        input_dir, frame_pattern, extension, fps, start_frame, end_frame, file_prefix, frame_padding = find_image_sequence_from_maya_settings()
         output_file = os.path.join(input_dir, f"{file_prefix}.gif")
 
-        convert_to_gif(input_dir, frame_pattern, fps, output_file, start_frame, end_frame, file_prefix)
+        convert_to_gif(input_dir, frame_pattern, fps, output_file, start_frame, end_frame, file_prefix, frame_padding, extension)
         print(f"Successfully created {output_file}")
     except Exception as e:
         print(f"Error: {e}")
