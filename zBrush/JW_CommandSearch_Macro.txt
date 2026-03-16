@@ -1,0 +1,312 @@
+// JW Command Search Macro
+// Place in ZStartup\Macros\JW\
+
+[VarDef, jwSearchQuery, ""]
+[VarDef, jwSearchResultCount, 0]
+[VarDef, jwSearchPage, 0]
+[VarDef, jwSearchPageSize, 8]
+[VarDef, jwSearchHaystack, ""]
+[VarDef, jwSearchRawQuery, ""]
+[VarDef, jwSearchStart, 0]
+[VarDef, jwSearchVisibleCount, 0]
+[VarDef, jwSearchHasPrev, 0]
+[VarDef, jwSearchHasNext, 0]
+[VarDef, jwSearchChoice, 0]
+[VarDef, jwSearchCurrentIndex, 0]
+[VarDef, jwSearchExtraButtonIndex, 0]
+[VarDef, jwSearchNoteText, ""]
+
+[VarDef, jwSearchNames(128), ""]
+[VarDef, jwSearchPaths(128), ""]
+[VarDef, jwSearchKinds(128), ""]
+[VarDef, jwSearchDescriptions(128), ""]
+
+[RoutineDef, JWSearch_ResetResults,
+	[VarSet, jwSearchResultCount, 0]
+	[VarSet, jwSearchPage, 0]
+	[Loop, 128,
+		[VarSet, jwSearchNames(jwSearchLoopIndex), ""]
+		[VarSet, jwSearchPaths(jwSearchLoopIndex), ""]
+		[VarSet, jwSearchKinds(jwSearchLoopIndex), ""]
+		[VarSet, jwSearchDescriptions(jwSearchLoopIndex), ""]
+	, jwSearchLoopIndex]
+]
+
+[RoutineDef, JWSearch_AddResult,
+	[If, jwSearchResultCount < 128,
+		[VarSet, jwSearchNames(jwSearchResultCount), jwEntryName]
+		[VarSet, jwSearchPaths(jwSearchResultCount), jwEntryPath]
+		[VarSet, jwSearchKinds(jwSearchResultCount), jwEntryKind]
+		[VarSet, jwSearchDescriptions(jwSearchResultCount), jwEntryDescription]
+		[VarInc, jwSearchResultCount]
+	]
+, jwEntryName, jwEntryPath, jwEntryKind, jwEntryDescription]
+
+[RoutineDef, JWSearch_MatchEntry,
+	[VarSet, jwSearchHaystack, [StrLower, [StrMerge, jwEntryName, " ", jwEntryKeywords, " ", jwEntryDescription]]]
+	[If, [StrFind, jwSearchQuery, jwSearchHaystack] >= 0,
+		[RoutineCall, JWSearch_AddResult, jwEntryName, jwEntryPath, jwEntryKind, jwEntryDescription]
+	]
+, jwEntryName, jwEntryPath, jwEntryKind, jwEntryDescription, jwEntryKeywords]
+
+[RoutineDef, JWSearch_AddTransformCommands,
+	[RoutineCall, JWSearch_MatchEntry, "Move Mode", "Transform:Move", "Command", "Activate Move mode.", "transform gizmo move translate"]
+	[RoutineCall, JWSearch_MatchEntry, "Scale Mode", "Transform:Scale", "Command", "Activate Scale mode.", "transform gizmo scale resize size"]
+	[RoutineCall, JWSearch_MatchEntry, "Rotate Mode", "Transform:Rotate", "Command", "Activate Rotate mode.", "transform gizmo rotate turn"]
+	[RoutineCall, JWSearch_MatchEntry, "Edit", "Transform:Edit", "Command", "Toggle Edit mode.", "transform edit draw"]
+	[RoutineCall, JWSearch_MatchEntry, "Frame", "Transform:Frame", "Command", "Frame the active tool.", "focus fit view zoom"]
+	[RoutineCall, JWSearch_MatchEntry, "PolyF", "Transform:PolyF", "Command", "Toggle PolyFrame.", "wireframe polyframe topology"]
+	[RoutineCall, JWSearch_MatchEntry, "Local Transformations", "Transform:Local", "Command", "Toggle local transformations.", "local transform gizmo"]
+	[RoutineCall, JWSearch_MatchEntry, "Activate Symmetry", "Transform:Activate Symmetry", "Command", "Toggle sculpt symmetry.", "symmetry x mirror"]
+	[RoutineCall, JWSearch_MatchEntry, "X Symmetry", "Transform:X Symmetry", "Command", "Enable X symmetry.", "symmetry mirror x axis"]
+	[RoutineCall, JWSearch_MatchEntry, "Y Symmetry", "Transform:Y Symmetry", "Command", "Enable Y symmetry.", "symmetry y axis"]
+	[RoutineCall, JWSearch_MatchEntry, "Z Symmetry", "Transform:Z Symmetry", "Command", "Enable Z symmetry.", "symmetry z axis"]
+	[RoutineCall, JWSearch_MatchEntry, "Solo", "Transform:Solo", "Command", "Show only the active subtool.", "isolate solo visibility"]
+]
+
+[RoutineDef, JWSearch_AddDrawCommands,
+	[RoutineCall, JWSearch_MatchEntry, "Floor", "Draw:Floor", "Command", "Toggle the floor grid.", "grid ground"]
+	[RoutineCall, JWSearch_MatchEntry, "Perspective", "Draw:Persp", "Command", "Toggle perspective view.", "camera perspective"]
+	[RoutineCall, JWSearch_MatchEntry, "Dynamic Perspective", "Draw:Dynamic", "Command", "Toggle dynamic perspective.", "camera dynamic"]
+	[RoutineCall, JWSearch_MatchEntry, "Draw Size", "Draw:Draw Size", "Command", "Adjust brush size.", "brush size radius"]
+	[RoutineCall, JWSearch_MatchEntry, "Focal Shift", "Draw:Focal Shift", "Command", "Adjust brush falloff.", "focus hardness"]
+	[RoutineCall, JWSearch_MatchEntry, "Z Intensity", "Draw:Z Intensity", "Command", "Adjust brush intensity.", "strength zadd sculpt"]
+	[RoutineCall, JWSearch_MatchEntry, "RGB Intensity", "Draw:RGB Intensity", "Command", "Adjust RGB intensity.", "paint color rgb intensity"]
+	[RoutineCall, JWSearch_MatchEntry, "ZAdd", "Draw:ZAdd", "Command", "Enable positive sculpting.", "sculpt add raise"]
+	[RoutineCall, JWSearch_MatchEntry, "ZSub", "Draw:ZSub", "Command", "Enable subtractive sculpting.", "sculpt subtract carve"]
+	[RoutineCall, JWSearch_MatchEntry, "MRGB", "Draw:MRGB", "Command", "Enable material and color painting.", "material rgb polypaint"]
+	[RoutineCall, JWSearch_MatchEntry, "RGB", "Draw:Rgb", "Command", "Enable color painting.", "paint color polypaint"]
+	[RoutineCall, JWSearch_MatchEntry, "M", "Draw:M", "Command", "Enable material painting.", "material paint"]
+]
+
+[RoutineDef, JWSearch_AddToolCommands,
+	[RoutineCall, JWSearch_MatchEntry, "Make PolyMesh3D", "Tool:Make PolyMesh3D", "Command", "Convert the active primitive to a polymesh.", "convert tool polymesh"]
+	[RoutineCall, JWSearch_MatchEntry, "Load Tool", "Tool:Load Tool", "Command", "Load a tool from disk.", "open import tool"]
+	[RoutineCall, JWSearch_MatchEntry, "Save As", "Tool:Save As", "Command", "Save the current tool.", "save tool export"]
+	[RoutineCall, JWSearch_MatchEntry, "Initialize", "Tool:Initialize", "Command", "Open the Initialize palette for primitives.", "primitive init"]
+	[RoutineCall, JWSearch_MatchEntry, "Tool Export", "Tool:Export", "Command", "Export the current tool.", "export obj fbx save"]
+]
+
+[RoutineDef, JWSearch_AddSubToolCommands,
+	[RoutineCall, JWSearch_MatchEntry, "SubTool Duplicate", "Tool:SubTool:Duplicate", "Command", "Duplicate the active subtool.", "duplicate copy subtool"]
+	[RoutineCall, JWSearch_MatchEntry, "SubTool Delete", "Tool:SubTool:Delete", "Command", "Delete the active subtool.", "remove trash subtool"]
+	[RoutineCall, JWSearch_MatchEntry, "SubTool Append", "Tool:SubTool:Append", "Command", "Append a new subtool.", "add append insert subtool"]
+	[RoutineCall, JWSearch_MatchEntry, "SubTool Insert", "Tool:SubTool:Insert", "Command", "Insert a subtool before the current one.", "insert reorder subtool"]
+	[RoutineCall, JWSearch_MatchEntry, "SubTool Rename", "Tool:SubTool:Rename", "Command", "Rename the active subtool.", "name subtool"]
+	[RoutineCall, JWSearch_MatchEntry, "SubTool Merge Down", "Tool:SubTool:Merge:Merge Down", "Command", "Merge the active subtool with the one below it.", "merge combine subtool"]
+	[RoutineCall, JWSearch_MatchEntry, "SubTool Merge Visible", "Tool:SubTool:Merge:Merge Visible", "Command", "Merge visible subtools.", "merge visible combine"]
+	[RoutineCall, JWSearch_MatchEntry, "SubTool Split Hidden", "Tool:SubTool:Split:Split Hidden", "Command", "Split hidden polygons into a new subtool.", "split hidden polygroup subtool"]
+	[RoutineCall, JWSearch_MatchEntry, "SubTool Split Masked Points", "Tool:SubTool:Split:Split Masked Points", "Command", "Split masked points into a new subtool.", "split masked subtool"]
+	[RoutineCall, JWSearch_MatchEntry, "Project All", "Tool:SubTool:Project:Project All", "Command", "Project visible subtools.", "projection subtool"]
+]
+
+[RoutineDef, JWSearch_AddGeometryCommands,
+	[RoutineCall, JWSearch_MatchEntry, "Geometry Divide", "Tool:Geometry:Divide", "Command", "Add a subdivision level.", "subdivide smooth geometry"]
+	[RoutineCall, JWSearch_MatchEntry, "Geometry Lower Res", "Tool:Geometry:Lower Res", "Command", "Step down a subdivision level.", "subdivision lower low"]
+	[RoutineCall, JWSearch_MatchEntry, "Geometry Higher Res", "Tool:Geometry:Higher Res", "Command", "Step up a subdivision level.", "subdivision higher high"]
+	[RoutineCall, JWSearch_MatchEntry, "Delete Lower", "Tool:Geometry:Del Lower", "Command", "Delete lower subdivision levels.", "delete lower subdivision"]
+	[RoutineCall, JWSearch_MatchEntry, "Delete Higher", "Tool:Geometry:Del Higher", "Command", "Delete higher subdivision levels.", "delete higher subdivision"]
+	[RoutineCall, JWSearch_MatchEntry, "Reconstruct Subdiv", "Tool:Geometry:Reconstruct Subdiv", "Command", "Rebuild lower subdivision levels.", "reconstruct subdivision"]
+	[RoutineCall, JWSearch_MatchEntry, "DynaMesh", "Tool:Geometry:DynaMesh:DynaMesh", "Command", "Toggle DynaMesh.", "dynamesh remesh voxel"]
+	[RoutineCall, JWSearch_MatchEntry, "ZRemesher", "Tool:Geometry:ZRemesher", "Command", "Run ZRemesher.", "retopo topology remesh"]
+	[RoutineCall, JWSearch_MatchEntry, "Mirror And Weld", "Tool:Geometry:Modify Topology:Mirror And Weld", "Command", "Mirror and weld the mesh.", "symmetry mirror topology weld"]
+	[RoutineCall, JWSearch_MatchEntry, "Close Holes", "Tool:Geometry:Modify Topology:Close Holes", "Command", "Fill mesh holes.", "repair topology hole fill"]
+	[RoutineCall, JWSearch_MatchEntry, "Del Hidden", "Tool:Geometry:Modify Topology:Del Hidden", "Command", "Delete hidden polygons.", "delete hidden geo"]
+	[RoutineCall, JWSearch_MatchEntry, "EdgeLoop", "Tool:Geometry:EdgeLoop:Panel Loops", "Command", "Create panel loops around masked or polygroup borders.", "panel loops hard surface"]
+]
+
+[RoutineDef, JWSearch_AddPolygroupCommands,
+	[RoutineCall, JWSearch_MatchEntry, "Group Visible", "Tool:Polygroups:Group Visible", "Command", "Create a polygroup from visible polygons.", "polygroups visible"]
+	[RoutineCall, JWSearch_MatchEntry, "Group Masked", "Tool:Polygroups:Group Masked", "Command", "Create a polygroup from the current mask.", "polygroups mask group"]
+	[RoutineCall, JWSearch_MatchEntry, "Auto Groups", "Tool:Polygroups:Auto Groups", "Command", "Create polygroups from separate shells.", "polygroups shells"]
+	[RoutineCall, JWSearch_MatchEntry, "Group By Normals", "Tool:Polygroups:Group By Normals", "Command", "Create groups from angle changes.", "polygroups normals hard edge"]
+	[RoutineCall, JWSearch_MatchEntry, "Crease PG", "Tool:Geometry:Crease:Crease PG", "Command", "Crease along polygroup borders.", "crease polygroup hard edge"]
+]
+
+[RoutineDef, JWSearch_AddMaskVisibilityCommands,
+	[RoutineCall, JWSearch_MatchEntry, "Mask By Cavity", "Tool:Masking:Mask By Cavity", "Command", "Mask recessed areas.", "mask cavity crevice"]
+	[RoutineCall, JWSearch_MatchEntry, "Mask By AO", "Tool:Masking:Mask By AO", "Command", "Mask ambient occlusion areas.", "mask ao ambient occlusion"]
+	[RoutineCall, JWSearch_MatchEntry, "Clear Mask", "Tool:Masking:Clear", "Command", "Clear the current mask.", "unmask clear mask"]
+	[RoutineCall, JWSearch_MatchEntry, "Invert Mask", "Tool:Masking:Inverse", "Command", "Invert the current mask.", "reverse mask"]
+	[RoutineCall, JWSearch_MatchEntry, "Hide Pt", "Tool:Visibility:HidePt", "Command", "Hide masked or selected points.", "hide points visibility"]
+	[RoutineCall, JWSearch_MatchEntry, "Show Pt", "Tool:Visibility:ShowPt", "Command", "Show hidden points.", "unhide show points visibility"]
+	[RoutineCall, JWSearch_MatchEntry, "Grow All", "Tool:Visibility:Grow All", "Command", "Grow visible region.", "visibility grow"]
+]
+
+[RoutineDef, JWSearch_AddDeformationCommands,
+	[RoutineCall, JWSearch_MatchEntry, "Inflate Deformation", "Tool:Deformation:Inflate", "Command", "Inflate the mesh from the Deformation palette.", "deformation inflate"]
+	[RoutineCall, JWSearch_MatchEntry, "Size Deformation", "Tool:Deformation:Size", "Command", "Scale the mesh from the Deformation palette.", "deformation size scale"]
+	[RoutineCall, JWSearch_MatchEntry, "Polish By Features", "Tool:Deformation:Polish By Features", "Command", "Polish based on mesh features.", "deformation polish hard surface"]
+	[RoutineCall, JWSearch_MatchEntry, "Relax", "Tool:Deformation:Relax", "Command", "Relax the mesh.", "deformation smooth relax"]
+]
+
+[RoutineDef, JWSearch_AddFileCommands,
+	[RoutineCall, JWSearch_MatchEntry, "Undo", "Edit:Undo", "Command", "Undo the last action.", "undo back"]
+	[RoutineCall, JWSearch_MatchEntry, "Redo", "Edit:Redo", "Command", "Redo the last undone action.", "redo forward"]
+	[RoutineCall, JWSearch_MatchEntry, "QuickSave", "File:QuickSave", "Command", "Create a quicksave.", "save backup"]
+	[RoutineCall, JWSearch_MatchEntry, "Preferences", "Preferences", "Command", "Open the Preferences palette.", "settings prefs"]
+	[RoutineCall, JWSearch_MatchEntry, "LightBox", "LightBox", "Command", "Toggle LightBox.", "browser assets"]
+	[RoutineCall, JWSearch_MatchEntry, "Fill Object", "Color:FillObject", "Command", "Fill the current tool with the selected color or material.", "fillobject paint polypaint"]
+]
+
+[RoutineDef, JWSearch_AddBrushUtilityCommands,
+	[RoutineCall, JWSearch_MatchEntry, "Lazy Mouse", "Stroke:Lazy Mouse", "Command", "Toggle Lazy Mouse.", "stroke lazymouse stabilizer"]
+	[RoutineCall, JWSearch_MatchEntry, "Backface Mask", "Brush:Auto Masking:BackfaceMask", "Command", "Avoid sculpting through the back side.", "automasking backface"]
+	[RoutineCall, JWSearch_MatchEntry, "Mask By Polygroups", "Brush:Auto Masking:Mask By Polygroups", "Command", "Limit sculpting across polygroup borders.", "automasking polygroups"]
+	[RoutineCall, JWSearch_MatchEntry, "Front Faces Only", "Brush:Auto Masking:Front Faces", "Command", "Limit sculpting to front-facing polygons.", "automasking front faces"]
+	[RoutineCall, JWSearch_MatchEntry, "AccuCurve", "Stroke:Curve Functions:AccuCurve", "Command", "Toggle AccuCurve for sharper strokes.", "stroke accucurve sharp"]
+]
+
+[RoutineDef, JWSearch_AddBrushes,
+	[RoutineCall, JWSearch_MatchEntry, "Standard", "Brush:Standard", "Brush", "General purpose sculpting brush.", "brush bst sculpt standard"]
+	[RoutineCall, JWSearch_MatchEntry, "DamStandard", "Brush:DamStandard", "Brush", "Sharp crease carving brush.", "brush crease cut carve bds dam"]
+	[RoutineCall, JWSearch_MatchEntry, "ClayBuildup", "Brush:ClayBuildup", "Brush", "Build up planar clay forms.", "brush clay buildup bcb"]
+	[RoutineCall, JWSearch_MatchEntry, "Clay", "Brush:Clay", "Brush", "Classic clay sculpting brush.", "brush clay bcl"]
+	[RoutineCall, JWSearch_MatchEntry, "ClayTubes", "Brush:ClayTubes", "Brush", "Tubular clay buildup.", "brush clay tubes bct"]
+	[RoutineCall, JWSearch_MatchEntry, "Move", "Brush:Move", "Brush", "Push and pull big forms.", "brush move bmv"]
+	[RoutineCall, JWSearch_MatchEntry, "Move Topological", "Brush:Move Topological", "Brush", "Move only connected topology.", "brush move topology bmt"]
+	[RoutineCall, JWSearch_MatchEntry, "Move Elastic", "Brush:Move Elastic", "Brush", "Soft broad move deformation.", "brush move elastic bme"]
+	[RoutineCall, JWSearch_MatchEntry, "Inflat", "Brush:Inflat", "Brush", "Inflate surfaces outward.", "brush inflate inflat bin"]
+	[RoutineCall, JWSearch_MatchEntry, "Pinch", "Brush:Pinch", "Brush", "Tighten edges and forms.", "brush pinch bpi"]
+	[RoutineCall, JWSearch_MatchEntry, "Smooth Stronger", "Brush:Smooth Stronger", "Brush", "A stronger smoothing brush.", "brush smooth stronger bss"]
+	[RoutineCall, JWSearch_MatchEntry, "Smooth", "Brush:Smooth", "Brush", "Standard smoothing brush.", "brush smooth"]
+	[RoutineCall, JWSearch_MatchEntry, "TrimDynamic", "Brush:TrimDynamic", "Brush", "Plane off surfaces.", "brush trim planar flatten btd"]
+	[RoutineCall, JWSearch_MatchEntry, "hPolish", "Brush:hPolish", "Brush", "Polish surfaces into planes.", "brush polish hard surface bhp"]
+	[RoutineCall, JWSearch_MatchEntry, "TrimSmoothBorder", "Brush:TrimSmoothBorder", "Brush", "Trim and smooth borders.", "brush trim border tsb"]
+	[RoutineCall, JWSearch_MatchEntry, "Slash3", "Brush:Slash3", "Brush", "Layered slash cuts.", "brush slash cut bsl"]
+	[RoutineCall, JWSearch_MatchEntry, "OrbCracks", "Brush:OrbCracks", "Brush", "Popular crack and crease brush if installed.", "brush orb cracks crack"]
+	[RoutineCall, JWSearch_MatchEntry, "SnakeHook", "Brush:SnakeHook", "Brush", "Pull out long tapered forms.", "brush snake hook bsh"]
+	[RoutineCall, JWSearch_MatchEntry, "Pinch", "Brush:Pinch", "Brush", "Tighten edges and forms.", "brush pinch sharpen"]
+	[RoutineCall, JWSearch_MatchEntry, "Morph", "Brush:Morph", "Brush", "Restore stored morph target areas.", "brush morph restore bmo"]
+	[RoutineCall, JWSearch_MatchEntry, "Layer", "Brush:Layer", "Brush", "Build forms in repeatable layers.", "brush layer buildup"]
+	[RoutineCall, JWSearch_MatchEntry, "Flatten", "Brush:Flatten", "Brush", "Flatten surfaces.", "brush flatten plane"]
+	[RoutineCall, JWSearch_MatchEntry, "Polish", "Brush:Polish", "Brush", "Polish and smooth surfaces.", "brush polish"]
+	[RoutineCall, JWSearch_MatchEntry, "Slash", "Brush:Slash", "Brush", "Slice shallow grooves.", "brush slash"]
+	[RoutineCall, JWSearch_MatchEntry, "Nudge", "Brush:Nudge", "Brush", "Push forms sideways.", "brush nudge move"]
+	[RoutineCall, JWSearch_MatchEntry, "Magnify", "Brush:Magnify", "Brush", "Enlarge details locally.", "brush magnify enlarge"]
+	[RoutineCall, JWSearch_MatchEntry, "MaskPen", "Brush:MaskPen", "Brush", "Paint a mask.", "brush mask masking bmp"]
+	[RoutineCall, JWSearch_MatchEntry, "MaskLasso", "Brush:MaskLasso", "Brush", "Lasso mask selection.", "brush mask lasso"]
+	[RoutineCall, JWSearch_MatchEntry, "MaskRect", "Brush:MaskRect", "Brush", "Rectangular mask selection.", "brush mask rect rectangle"]
+	[RoutineCall, JWSearch_MatchEntry, "SelectRect", "Brush:SelectRect", "Brush", "Rectangular selection brush.", "brush select rectangle selection"]
+	[RoutineCall, JWSearch_MatchEntry, "SelectLasso", "Brush:SelectLasso", "Brush", "Lasso selection brush.", "brush select lasso selection"]
+	[RoutineCall, JWSearch_MatchEntry, "ClipCurve", "Brush:ClipCurve", "Brush", "Clip with a curve line.", "brush clip curve bcc"]
+	[RoutineCall, JWSearch_MatchEntry, "TrimCurve", "Brush:TrimCurve", "Brush", "Trim with a curve line.", "brush trim curve btc"]
+	[RoutineCall, JWSearch_MatchEntry, "ClipRect", "Brush:ClipRect", "Brush", "Clip with a rectangle.", "brush clip rect rectangle"]
+	[RoutineCall, JWSearch_MatchEntry, "TrimRect", "Brush:TrimRect", "Brush", "Trim with a rectangle.", "brush trim rect rectangle"]
+	[RoutineCall, JWSearch_MatchEntry, "IMM Primitives", "Brush:IMM Primitives", "Brush", "Insert mesh primitives.", "brush imm insert kitbash"]
+	[RoutineCall, JWSearch_MatchEntry, "IMM BParts", "Brush:IMM BParts", "Brush", "Insert common mesh parts.", "brush imm insert parts"]
+	[RoutineCall, JWSearch_MatchEntry, "InsertCylinder", "Brush:InsertCylinder", "Brush", "Insert a cylinder mesh.", "brush insert cylinder bic"]
+	[RoutineCall, JWSearch_MatchEntry, "InsertCube", "Brush:InsertCube", "Brush", "Insert a cube mesh.", "brush insert cube"]
+	[RoutineCall, JWSearch_MatchEntry, "InsertSphere", "Brush:InsertSphere", "Brush", "Insert a sphere mesh.", "brush insert sphere"]
+]
+
+[RoutineDef, JWSearch_BuildCatalog,
+	[RoutineCall, JWSearch_AddTransformCommands]
+	[RoutineCall, JWSearch_AddDrawCommands]
+	[RoutineCall, JWSearch_AddToolCommands]
+	[RoutineCall, JWSearch_AddSubToolCommands]
+	[RoutineCall, JWSearch_AddGeometryCommands]
+	[RoutineCall, JWSearch_AddPolygroupCommands]
+	[RoutineCall, JWSearch_AddMaskVisibilityCommands]
+	[RoutineCall, JWSearch_AddDeformationCommands]
+	[RoutineCall, JWSearch_AddFileCommands]
+	[RoutineCall, JWSearch_AddBrushUtilityCommands]
+	[RoutineCall, JWSearch_AddBrushes]
+]
+
+[RoutineDef, JWSearch_ExecuteResult,
+	[If, [IExists, jwExecPath],
+		[IPress, jwExecPath]
+	,
+		[Note, [StrMerge, "This item path was not found in your current ZBrush UI:\n", jwExecPath, "\n\nThat usually means the button name differs in your build or the item is not currently available."], , 0]
+	]
+, jwExecPath]
+
+[RoutineDef, JWSearch_ShowResults,
+	[VarSet, jwSearchStart, (jwSearchPage * jwSearchPageSize)]
+	[VarSet, jwSearchVisibleCount, 0]
+	[VarSet, jwSearchHasPrev, 0]
+	[VarSet, jwSearchHasNext, 0]
+	[VarSet, jwSearchNoteText, [StrMerge, "JW Command Search\nSearch: ", jwSearchQuery, "\nMatches: ", jwSearchResultCount, "\n\nChoose a result to run it."]]
+
+	[If, jwSearchResultCount <= 0,
+		[NoteIButton, "Search Again"]
+		[NoteIButton, "Close"]
+		[VarSet, jwSearchChoice, [Note, [StrMerge, "No matches for: ", jwSearchQuery, "\n\nTry short terms like trim, move, mask, dyna, zremesh, subtool, symmetry, clay, or polish."], , 0]]
+		[If, jwSearchChoice == 1,
+			[RoutineCall, JWSearch_Run]
+		]
+		[Exit]
+	]
+
+	[If, jwSearchPage > 0,
+		[VarSet, jwSearchHasPrev, 1]
+	]
+
+	[Loop, jwSearchPageSize,
+		[VarSet, jwSearchCurrentIndex, (jwSearchStart + jwSearchSlot)]
+		[If, jwSearchCurrentIndex >= jwSearchResultCount,
+			[LoopExit]
+		]
+		[VarSet, jwSearchVisibleCount, (jwSearchVisibleCount + 1)]
+		[NoteIButton, [StrMerge, jwSearchNames(jwSearchCurrentIndex), " [", jwSearchKinds(jwSearchCurrentIndex), "]"]]
+		[VarSet, jwSearchNoteText, [StrMerge, jwSearchNoteText, "\n\n", jwSearchNames(jwSearchCurrentIndex), " [", jwSearchKinds(jwSearchCurrentIndex), "]\n", jwSearchDescriptions(jwSearchCurrentIndex)]]
+	, jwSearchSlot]
+
+	[If, (jwSearchStart + jwSearchVisibleCount) < jwSearchResultCount,
+		[VarSet, jwSearchHasNext, 1]
+	]
+
+	[If, jwSearchHasPrev == 1,
+		[NoteIButton, "Prev Page"]
+	]
+	[NoteIButton, "Search Again"]
+	[If, jwSearchHasNext == 1,
+		[NoteIButton, "Next Page"]
+	]
+	[NoteIButton, "Close"]
+
+	[VarSet, jwSearchChoice, [Note, jwSearchNoteText, , 0, 0x2d2d2d, , 680]]
+
+	[If, jwSearchChoice <= jwSearchVisibleCount,
+		[RoutineCall, JWSearch_ExecuteResult, jwSearchPaths(jwSearchStart + jwSearchChoice - 1)]
+		[Exit]
+	]
+
+	[VarSet, jwSearchExtraButtonIndex, (jwSearchVisibleCount + 1)]
+	[If, jwSearchHasPrev == 1,
+		[If, jwSearchChoice == jwSearchExtraButtonIndex,
+			[VarDec, jwSearchPage]
+			[RoutineCall, JWSearch_ShowResults]
+			[Exit]
+		]
+		[VarInc, jwSearchExtraButtonIndex]
+	]
+
+	[If, jwSearchChoice == jwSearchExtraButtonIndex,
+		[RoutineCall, JWSearch_Run]
+		[Exit]
+	]
+	[VarInc, jwSearchExtraButtonIndex]
+
+	[If, jwSearchHasNext == 1,
+		[If, jwSearchChoice == jwSearchExtraButtonIndex,
+			[VarInc, jwSearchPage]
+			[RoutineCall, JWSearch_ShowResults]
+			[Exit]
+		]
+	]
+]
+
+[RoutineDef, JWSearch_Run,
+	[VarSet, jwSearchRawQuery, [StrAsk, jwSearchQuery, "Search ZBrush Commands and Brushes"]]
+	[If, [StrLength, jwSearchRawQuery] <= 0,
+		[Exit]
+	]
+	[VarSet, jwSearchQuery, [StrLower, jwSearchRawQuery]]
+	[RoutineCall, JWSearch_ResetResults]
+	[RoutineCall, JWSearch_BuildCatalog]
+	[RoutineCall, JWSearch_ShowResults]
+]
+
+[IButton, ???, "Search ZBrush commands and brushes. Assign a hotkey to this macro after it loads.", [RoutineCall, JWSearch_Run]]
