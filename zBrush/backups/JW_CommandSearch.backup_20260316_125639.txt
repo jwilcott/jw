@@ -108,8 +108,7 @@
 	[RoutineCall, JWSearch_MatchEntry, "Delete Lower", "Tool:Geometry:Del Lower", "Command", "Delete lower subdivision levels.", "delete lower subdivision"]
 	[RoutineCall, JWSearch_MatchEntry, "Delete Higher", "Tool:Geometry:Del Higher", "Command", "Delete higher subdivision levels.", "delete higher subdivision"]
 	[RoutineCall, JWSearch_MatchEntry, "Reconstruct Subdiv", "Tool:Geometry:Reconstruct Subdiv", "Command", "Rebuild lower subdivision levels.", "reconstruct subdivision"]
-	[RoutineCall, JWSearch_MatchEntry, "DynaMesh Remesh", "JW_DynaMeshRemesh", "Command", "Attempt a DynaMesh remesh by Ctrl-clicking empty canvas space.", "dynamesh dyna remesh voxel"]
-	[RoutineCall, JWSearch_MatchEntry, "DynaMesh Toggle", "Tool:Geometry:DynaMesh", "Command", "Toggle the DynaMesh control.", "dynamesh toggle panel"]
+	[RoutineCall, JWSearch_MatchEntry, "DynaMesh", "Tool:Geometry:DynaMesh", "Command", "Toggle the DynaMesh control.", "dynamesh remesh voxel"]
 	[RoutineCall, JWSearch_MatchEntry, "ZRemesher", "Tool:Geometry:ZRemesher", "Command", "Run ZRemesher.", "retopo topology remesh"]
 	[RoutineCall, JWSearch_MatchEntry, "Mirror And Weld", "Tool:Geometry:Modify Topology:Mirror And Weld", "Command", "Mirror and weld the mesh.", "symmetry mirror topology weld"]
 	[RoutineCall, JWSearch_MatchEntry, "Close Holes", "Tool:Geometry:Modify Topology:Close Holes", "Command", "Fill mesh holes.", "repair topology hole fill"]
@@ -217,19 +216,10 @@
 ]
 
 [RoutineDef, JWSearch_ExecuteResult,
-	[If, [StrFind, "JW_DynaMeshRemesh", jwSearchPaths(jwSearchSelectedIndex)] == 0,
-		[If, [IExists, "Tool:Geometry:DynaMesh"],
-			[IShowActions,0]
-			[IKeyPress, CTRL, [IClick,1004,16,16,1,1]]
-		,
-			[Note, "DynaMesh is not available for the current tool.", , 0]
-		]
-	,
 	[If, [IExists, jwSearchPaths(jwSearchSelectedIndex)],
 		[IPress, jwSearchPaths(jwSearchSelectedIndex)]
 	,
 		[Note, [StrMerge, "This item path was not found in your current ZBrush UI:\n", jwSearchPaths(jwSearchSelectedIndex), "\n\nSelected item: ", jwSearchNames(jwSearchSelectedIndex), "\n\nThat usually means the button name differs in your build or the item is not currently available."], , 0]
-	]
 	]
 ]
 

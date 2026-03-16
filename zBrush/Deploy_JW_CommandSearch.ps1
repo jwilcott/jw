@@ -8,6 +8,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sourceFile = Join-Path $scriptDir 'JW_CommandSearch_Macro.txt'
 $macroFolderName = 'JW'
 $macroFileName = 'JW Command Search.txt'
+$backupRoot = Join-Path $scriptDir 'backups'
 
 if (-not (Test-Path -LiteralPath $sourceFile)) {
     Write-Host "Macro source not found:" -ForegroundColor Red
@@ -68,9 +69,13 @@ $obsoletePluginPaths = @(
     'C:\Users\Public\Documents\ZBrushData2025\ZStartup\ZPlugs64\JW_CommandSearch.txt'
 )
 
+if (-not (Test-Path -LiteralPath $backupRoot)) {
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+}
+
 if (Test-Path -LiteralPath $destinationFile) {
     $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $backupFile = Join-Path $destinationFolder ("JW_CommandSearch.backup_{0}.txt" -f $timestamp)
+    $backupFile = Join-Path $backupRoot ("JW_CommandSearch.backup_{0}.txt" -f $timestamp)
     Copy-Item -LiteralPath $destinationFile -Destination $backupFile -Force
     Write-Host "Backed up existing macro to:" -ForegroundColor Yellow
     Write-Host "  $backupFile"
@@ -84,6 +89,9 @@ foreach ($obsoletePath in $obsoletePluginPaths) {
         Remove-Item -LiteralPath $obsoletePath -Force -ErrorAction SilentlyContinue
     }
 }
+
+Get-ChildItem -LiteralPath $destinationFolder -File -Filter 'JW_CommandSearch.backup_*.txt' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem -LiteralPath $destinationFolder -File -Filter 'JW_CommandSearch.backup_*.zsc' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "Deployed JW Command Search macro to:" -ForegroundColor Green

@@ -108,7 +108,7 @@
 	[RoutineCall, JWSearch_MatchEntry, "Delete Lower", "Tool:Geometry:Del Lower", "Command", "Delete lower subdivision levels.", "delete lower subdivision"]
 	[RoutineCall, JWSearch_MatchEntry, "Delete Higher", "Tool:Geometry:Del Higher", "Command", "Delete higher subdivision levels.", "delete higher subdivision"]
 	[RoutineCall, JWSearch_MatchEntry, "Reconstruct Subdiv", "Tool:Geometry:Reconstruct Subdiv", "Command", "Rebuild lower subdivision levels.", "reconstruct subdivision"]
-	[RoutineCall, JWSearch_MatchEntry, "DynaMesh Remesh", "JW_DynaMeshRemesh", "Command", "Attempt a DynaMesh remesh by Ctrl-clicking empty canvas space.", "dynamesh dyna remesh voxel"]
+	[RoutineCall, JWSearch_MatchEntry, "DynaMesh Remesh", "JW:Special:DynaMeshRemesh", "Command", "Attempt a DynaMesh remesh by Ctrl-clicking empty canvas space.", "dynamesh dyna remesh voxel"]
 	[RoutineCall, JWSearch_MatchEntry, "DynaMesh Toggle", "Tool:Geometry:DynaMesh", "Command", "Toggle the DynaMesh control.", "dynamesh toggle panel"]
 	[RoutineCall, JWSearch_MatchEntry, "ZRemesher", "Tool:Geometry:ZRemesher", "Command", "Run ZRemesher.", "retopo topology remesh"]
 	[RoutineCall, JWSearch_MatchEntry, "Mirror And Weld", "Tool:Geometry:Modify Topology:Mirror And Weld", "Command", "Mirror and weld the mesh.", "symmetry mirror topology weld"]
@@ -217,7 +217,7 @@
 ]
 
 [RoutineDef, JWSearch_ExecuteResult,
-	[If, [StrFind, "JW_DynaMeshRemesh", jwSearchPaths(jwSearchSelectedIndex)] == 0,
+	[If, jwSearchPaths(jwSearchSelectedIndex) == "JW:Special:DynaMeshRemesh",
 		[If, [IExists, "Tool:Geometry:DynaMesh"],
 			[IShowActions,0]
 			[IKeyPress, CTRL, [IClick,1004,16,16,1,1]]
