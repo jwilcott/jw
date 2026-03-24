@@ -45,6 +45,7 @@ if (-not (Test-Path -LiteralPath $SourceDir)) {
 }
 
 $scriptFiles = @(
+    'aeExportTrackedCameraToMaya.jsx',
     'aeVersionUpSelected.jsx',
     'aeVersionUpSelectedTimeline.jsx',
     'aeVersionDownSelectedTimeline.jsx'
