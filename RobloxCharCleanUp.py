@@ -8,39 +8,49 @@
 
 import maya.cmds as cmds
 
+TARGET_HEIGHT = 20.0
+
+def bottom_pivot_from_bbox(bbox):
+    return [(bbox[0] + bbox[3]) / 2, bbox[1], (bbox[2] + bbox[5]) / 2]
+
 def process_scene():
-    # Group all top-level mesh transforms in the outliner
+    # Collect all top-level mesh transforms in the outliner
     mesh_transforms = []
     for obj in cmds.ls(assemblies=True, long=False):
         shapes = cmds.listRelatives(obj, shapes=True, type='mesh', fullPath=True) or []
         if shapes:
             mesh_transforms.append(obj)
     if not mesh_transforms:
-        cmds.warning("No mesh objects found to group.")
+        cmds.warning("No mesh objects found to process.")
         return
-    group_name = "geo"
-    group = cmds.group(mesh_transforms, name=group_name)
 
-    # Center pivot at bottom of bounding box
-    bbox = cmds.exactWorldBoundingBox(group)
-    pivot = [(bbox[0]+bbox[3])/2, bbox[1], (bbox[2]+bbox[5])/2]
-    cmds.xform(group, piv=pivot, ws=True)
+    # Use the combined bounding box of all top-level meshes
+    bbox = cmds.exactWorldBoundingBox(*mesh_transforms)
+    pivot = bottom_pivot_from_bbox(bbox)
+    for obj in mesh_transforms:
+        cmds.xform(obj, ws=True, piv=pivot)
 
-    # Move group so bottom of bounding box is at 0,0,0
-    cmds.xform(group, ws=True, t=[0,0,0])  # Reset translation first (optional, for consistency)
-    bbox = cmds.exactWorldBoundingBox(group)
-    offset = [-((bbox[0]+bbox[3])/2), -bbox[1], -((bbox[2]+bbox[5])/2)]
-    cmds.xform(group, r=True, t=offset)
+    # Move the combined meshes so the bottom of the bounding box is at 0,0,0
+    offset = [-pivot[0], -pivot[1], -pivot[2]]
+    for obj in mesh_transforms:
+        cmds.xform(obj, r=True, t=offset)
 
-    # Rotate group 180 in Y
-    cmds.xform(group, ws=True, rotation=[0,180,0])
+    # Rotate the combined meshes 180 in Y around the shared bottom pivot
+    for obj in mesh_transforms:
+        cmds.xform(obj, relative=True, rotation=[0, 180, 0])
 
-    # Scale group up by 6
-    cmds.xform(group, ws=True, scale=[6,6,6])
+    # Scale the combined meshes uniformly so the bounding box is TARGET_HEIGHT units tall
+    bbox = cmds.exactWorldBoundingBox(*mesh_transforms)
+    current_height = bbox[4] - bbox[1]
+    if current_height <= 0:
+        cmds.warning("Could not scale meshes: bounding box height is zero.")
+    else:
+        scale_factor = TARGET_HEIGHT / current_height
+        for obj in mesh_transforms:
+            cmds.xform(obj, relative=True, scale=[scale_factor, scale_factor, scale_factor])
 
-    # PolyMergeVert .001 for each object in group
-    children = cmds.listRelatives(group, children=True, type='transform', fullPath=True) or []
-    for obj in children:
+    # PolyMergeVert .001 for each mesh transform
+    for obj in mesh_transforms:
         shapes = cmds.listRelatives(obj, shapes=True, type='mesh', fullPath=True) or []
         if shapes:
             cmds.select(obj)
@@ -50,7 +60,7 @@ def process_scene():
                 cmds.warning(f"Could not merge vertices for {obj}")
 
     # Quadulate each object, uncheck keep hard edges
-    for obj in children:
+    for obj in mesh_transforms:
         shapes = cmds.listRelatives(obj, shapes=True, type='mesh', fullPath=True) or []
         if shapes:
             cmds.select(obj, r=True)
@@ -59,17 +69,15 @@ def process_scene():
             except Exception as e:
                 cmds.warning(f"Could not polyQuad {obj}: {e}")
 
-    # Center the pivot for each object in the group
-    for obj in children:
+    # Set each object pivot to the bottom of its own bounding box
+    for obj in mesh_transforms:
         shapes = cmds.listRelatives(obj, shapes=True, type='mesh', fullPath=True) or []
         if shapes:
             try:
-                cmds.xform(obj, centerPivots=True)
+                obj_bbox = cmds.exactWorldBoundingBox(obj)
+                cmds.xform(obj, ws=True, piv=bottom_pivot_from_bbox(obj_bbox))
             except Exception as e:
-                cmds.warning(f"Could not center pivot for {obj}: {e}")
-
-    # Re-query children after namespaces have been removed
-    children = cmds.listRelatives(group, children=True, type='transform', fullPath=True) or []
+                cmds.warning(f"Could not set bottom pivot for {obj}: {e}")
 
     # Set all file node color spaces to 'sRGB'
     file_nodes = cmds.ls(type='file')
@@ -80,8 +88,8 @@ def process_scene():
         except Exception as e:
             cmds.warning(f"Could not set colorSpace for {node}: {e}")
 
-    # Delete history for each object in the group
-    for obj in children:
+    # Delete history for each object
+    for obj in mesh_transforms:
         # Double-check object exists before operating, to avoid errors from missing nodes
         if not cmds.objExists(obj):
             cmds.warning(f"Object {obj} does not exist, skipping history delete.")
@@ -92,6 +100,19 @@ def process_scene():
                 cmds.delete(obj, constructionHistory=True)
             except Exception as e:
                 cmds.warning(f"Could not delete history for {obj}: {e}")
+
+    # Freeze transforms at the end and keep pivots at the bottom of each mesh
+    for obj in mesh_transforms:
+        if not cmds.objExists(obj):
+            continue
+        shapes = cmds.listRelatives(obj, shapes=True, type='mesh', fullPath=True) or []
+        if shapes:
+            try:
+                cmds.makeIdentity(obj, apply=True, translate=True, rotate=True, scale=True)
+                obj_bbox = cmds.exactWorldBoundingBox(obj)
+                cmds.xform(obj, ws=True, piv=bottom_pivot_from_bbox(obj_bbox))
+            except Exception as e:
+                cmds.warning(f"Could not freeze transforms for {obj}: {e}")
 
     cmds.select(clear=True)
 
