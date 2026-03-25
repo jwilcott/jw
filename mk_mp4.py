@@ -5,7 +5,9 @@ import os
 import argparse
 import subprocess
 import maya.cmds as cmds
-import glob
+import re
+
+FFMPEG_BIN_DIR = "C:/ffmpeg/ffmpeg-master-latest-win64-gpl/bin"
 
 def resolve_render_tokens(path_value):
     """
@@ -33,20 +35,88 @@ def normalize_prefix(prefix):
     return prefix
 
 
-def detect_sequence_bounds(input_dir, base_name, frame_padding, extension):
-    pattern = os.path.join(input_dir, f"{base_name}.{'?' * frame_padding}{extension}")
-    candidates = glob.glob(pattern)
-    import re
-    frame_regex = re.compile(rf"^{re.escape(base_name)}\.(\d{{{frame_padding}}}){re.escape(extension)}$")
+def get_image_extension(image_format):
+    if image_format == 8:
+        return ".jpg"
+    if image_format == 32:
+        return ".exr"
+    if image_format == 0:
+        return ".iff"
+    return ".png"
 
-    frame_numbers = []
-    for fn in candidates:
-        name = os.path.basename(fn)
-        match = frame_regex.match(name)
-        if match:
-            frame_numbers.append(int(match.group(1)))
 
-    return sorted(frame_numbers)
+def get_sequence_search_root(render_dir, raw_prefix, resolved_prefix):
+    raw_prefix_dir = os.path.dirname(raw_prefix or "")
+    resolved_prefix_dir = os.path.dirname(resolved_prefix or "")
+
+    raw_parts = [part for part in raw_prefix_dir.split('/') if part]
+    resolved_parts = [part for part in resolved_prefix_dir.split('/') if part]
+
+    stable_parts = []
+    for index, raw_part in enumerate(raw_parts):
+        if "<" in raw_part and ">" in raw_part:
+            break
+        if index >= len(resolved_parts):
+            break
+        stable_parts.append(resolved_parts[index])
+
+    if stable_parts:
+        return os.path.normpath(os.path.join(render_dir, *stable_parts))
+    if resolved_prefix_dir:
+        return os.path.normpath(os.path.join(render_dir, resolved_prefix_dir))
+    return os.path.normpath(render_dir)
+
+
+def find_sequence_specs(search_root, extension, frame_padding):
+    frame_regex = re.compile(rf"^(?P<base>.+)\.(?P<frame>\d{{{frame_padding}}}){re.escape(extension)}$")
+    grouped_sequences = {}
+
+    for dirpath, _, filenames in os.walk(search_root):
+        for filename in filenames:
+            match = frame_regex.match(filename)
+            if not match:
+                continue
+
+            base_name = match.group("base")
+            frame_number = int(match.group("frame"))
+            input_dir = os.path.normpath(dirpath)
+            sequence_key = (input_dir, base_name)
+
+            if sequence_key not in grouped_sequences:
+                grouped_sequences[sequence_key] = {
+                    "input_dir": input_dir,
+                    "base_name": base_name,
+                    "frame_numbers": []
+                }
+
+            grouped_sequences[sequence_key]["frame_numbers"].append(frame_number)
+
+    sequence_specs = []
+    for sequence_spec in grouped_sequences.values():
+        sequence_spec["frame_numbers"].sort()
+        sequence_spec["frame_pattern"] = f"{sequence_spec['base_name']}.%0{frame_padding}d{extension}"
+        sequence_spec["output_file"] = os.path.join(sequence_spec["input_dir"], f"{sequence_spec['base_name']}.mp4")
+        sequence_specs.append(sequence_spec)
+
+    return sequence_specs
+
+
+def sort_sequence_specs(sequence_specs, primary_input_dir, primary_base_name):
+    normalized_primary_dir = os.path.normcase(os.path.normpath(primary_input_dir))
+    normalized_primary_base = os.path.normcase(primary_base_name)
+
+    def sort_key(sequence_spec):
+        is_primary = (
+            os.path.normcase(os.path.normpath(sequence_spec["input_dir"])) == normalized_primary_dir and
+            os.path.normcase(sequence_spec["base_name"]) == normalized_primary_base
+        )
+        return (
+            0 if is_primary else 1,
+            os.path.normcase(os.path.normpath(sequence_spec["input_dir"])),
+            os.path.normcase(sequence_spec["base_name"])
+        )
+
+    return sorted(sequence_specs, key=sort_key)
 
 
 def find_image_sequence_from_maya_settings():
@@ -55,7 +125,8 @@ def find_image_sequence_from_maya_settings():
     """
     # Get render settings from Maya
     render_dir = os.path.normpath(cmds.workspace(q=True, rd=True) + cmds.workspace(fileRuleEntry="images"))
-    file_prefix = normalize_prefix(resolve_render_tokens(cmds.getAttr("defaultRenderGlobals.imageFilePrefix")))
+    raw_file_prefix = normalize_prefix(cmds.getAttr("defaultRenderGlobals.imageFilePrefix"))
+    file_prefix = normalize_prefix(resolve_render_tokens(raw_file_prefix))
 
     frame_padding = int(cmds.getAttr("defaultRenderGlobals.extensionPadding"))
     image_format = int(cmds.getAttr("defaultRenderGlobals.imageFormat"))
@@ -75,31 +146,37 @@ def find_image_sequence_from_maya_settings():
     start_frame = int(cmds.getAttr("defaultRenderGlobals.startFrame"))
     end_frame = int(cmds.getAttr("defaultRenderGlobals.endFrame"))
 
-    if image_format == 8:
-        extension = ".jpg"
-    elif image_format == 32:
-        extension = ".exr"
-    elif image_format == 0:
-        extension = ".iff"
-    else:
-        extension = ".png"
+    extension = get_image_extension(image_format)
 
     prefix_dir = os.path.dirname(file_prefix)
     base_name = os.path.basename(file_prefix)
     input_dir = os.path.normpath(os.path.join(render_dir, prefix_dir))
+    search_root = get_sequence_search_root(render_dir, raw_file_prefix, file_prefix)
 
-    frame_pattern = f"{base_name}.%0{frame_padding}d{extension}"
-    return input_dir, frame_pattern, extension, fps, start_frame, end_frame, base_name, frame_padding
+    return {
+        "input_dir": input_dir,
+        "extension": extension,
+        "fps": fps,
+        "start_frame": start_frame,
+        "end_frame": end_frame,
+        "base_name": base_name,
+        "frame_padding": frame_padding,
+        "search_root": search_root
+    }
 
 
-def convert_to_mp4(input_dir, frame_pattern, fps, output_file, start_frame, end_frame, file_prefix, frame_padding, extension):
+def convert_to_mp4(sequence_spec, fps, start_frame, end_frame):
     """
     Convert an image sequence into an H.264 MP4 video.
     """
-    # Ensure the frame sequence exists and find actual range
-    frame_numbers = detect_sequence_bounds(input_dir, file_prefix, frame_padding, extension)
+    input_dir = sequence_spec["input_dir"]
+    base_name = sequence_spec["base_name"]
+    frame_numbers = sequence_spec["frame_numbers"]
+    frame_pattern = sequence_spec["frame_pattern"]
+    output_file = sequence_spec["output_file"]
+
     if not frame_numbers:
-        raise FileNotFoundError(f"No images found matching {file_prefix}.{frame_pattern} in {input_dir}")
+        raise FileNotFoundError(f"No images found for {base_name} in {input_dir}")
 
     actual_start = frame_numbers[0]
     actual_end = frame_numbers[-1]
@@ -116,9 +193,10 @@ def convert_to_mp4(input_dir, frame_pattern, fps, output_file, start_frame, end_
 
     # Ensure proper quoting of paths with spaces
     input_path = os.path.join(input_dir, frame_pattern).replace("\\", "/")
-    output_file = os.path.join(input_dir, f"{file_prefix}.mp4").replace("\\", "/")
+    output_file = output_file.replace("\\", "/")
 
     # Debug: Print paths
+    print(f"Sequence: {base_name}")
     print(f"Input path: {input_path}")
     print(f"Output file: {output_file}")
     print(f"Requested frame range: {start_frame}-{end_frame} ({frame_count} frames)")
@@ -142,30 +220,29 @@ def convert_to_mp4(input_dir, frame_pattern, fps, output_file, start_frame, end_
 
     # Ensure ffmpeg is in PATH
     env = os.environ.copy()
-    env["PATH"] += os.pathsep + "C:/ffmpeg/ffmpeg-master-latest-win64-gpl/bin"  # Update with your ffmpeg path
+    env["PATH"] += os.pathsep + FFMPEG_BIN_DIR
 
     print("Running command:", " ".join(command))
+    result = subprocess.run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    print("FFmpeg Output:\n", result.stdout)
+    print("FFmpeg Errors:\n", result.stderr)
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg failed with exit code {result.returncode}")
+
+    return output_file
+
+
+def open_in_explorer(output_file):
+    directory = os.path.abspath(os.path.dirname(output_file))
+    if not os.path.exists(directory):
+        print(f"Directory does not exist: {directory}")
+        return
+
+    print(f"Opening directory and selecting file: {output_file}")
     try:
-        result = subprocess.run(command, shell=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        print("FFmpeg Output:\n", result.stdout)
-        print("FFmpeg Errors:\n", result.stderr)
-        if result.returncode != 0:
-            raise RuntimeError(f"FFmpeg failed with exit code {result.returncode}")
-
-        # Open the directory containing the file in Explorer and select the new MP4 file
-        directory = os.path.abspath(os.path.dirname(output_file))
-        if not os.path.exists(directory):
-            print(f"Directory does not exist: {directory}")
-            return
-
-        print(f"Opening directory and selecting file: {output_file}")
-        try:
-            subprocess.run(["explorer", "/select,", os.path.normpath(output_file)], check=True)
-        except Exception as e:
-            print(f"Error while opening directory in Explorer: {e}")
-    except Exception as e:
-        print(f"Error while running FFmpeg: {e}")
-        raise
+        subprocess.run(["explorer", "/select,", os.path.normpath(output_file)], check=True)
+    except Exception as exc:
+        print(f"Error while opening directory in Explorer: {exc}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert an image sequence to an H.264 MP4 video based on Maya render settings.")
@@ -173,10 +250,37 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        input_dir, frame_pattern, extension, fps, start_frame, end_frame, file_prefix, frame_padding = find_image_sequence_from_maya_settings()
-        output_file = os.path.join(input_dir, f"{file_prefix}.mp4")
+        settings = find_image_sequence_from_maya_settings()
+        sequence_specs = find_sequence_specs(
+            settings["search_root"],
+            settings["extension"],
+            settings["frame_padding"]
+        )
+        sequence_specs = sort_sequence_specs(
+            sequence_specs,
+            settings["input_dir"],
+            settings["base_name"]
+        )
 
-        convert_to_mp4(input_dir, frame_pattern, fps, output_file, start_frame, end_frame, file_prefix, frame_padding, extension)
-        print(f"Successfully created {output_file}")
+        if not sequence_specs:
+            raise FileNotFoundError(
+                f"No image sequences found under {settings['search_root']} with extension {settings['extension']}"
+            )
+
+        created_files = []
+        print(f"Found {len(sequence_specs)} sequence(s) under {settings['search_root']}")
+
+        for sequence_spec in sequence_specs:
+            output_file = convert_to_mp4(
+                sequence_spec,
+                settings["fps"],
+                settings["start_frame"],
+                settings["end_frame"]
+            )
+            created_files.append(output_file)
+            print(f"Successfully created {output_file}")
+
+        if created_files:
+            open_in_explorer(created_files[-1])
     except Exception as e:
         print(f"Error: {e}")

@@ -5,6 +5,17 @@ import re
 import subprocess
 import maya.cmds as cmds
 
+def show_viewport_message(message):
+    try:
+        cmds.inViewMessage(
+            statusMessage=message,
+            pos='midCenterTop',
+            fade=True,
+            alpha=0.9
+        )
+    except Exception:
+        print(message)
+
 def construct_render_path():
     """
     Construct the full render path based on Maya's render settings.
@@ -73,11 +84,16 @@ def main():
     render_path = construct_render_path()
     print(f"Constructed render path: {render_path}")
 
+    if not os.path.exists(render_path):
+        show_viewport_message("No render sequence found. DJV will not be opened.")
+        return
+
     # Open the render path with DJV
     try:
         open_with_djv(render_path)
-        print("Image opened successfully in DJV.")
+        show_viewport_message("Render sequence opened in DJV.")
     except Exception as e:
+        show_viewport_message("Failed to open render sequence in DJV.")
         print(f"Failed to open image with DJV: {e}")
 
 if __name__ == "__main__":
