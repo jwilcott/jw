@@ -16,6 +16,8 @@
     var RET = "\r";
     var CAMERA_APERTURE_HEIGHT = 1.0;
     var DEFAULT_WORLD_SCALE = 0.0254;
+    var DEFAULT_IMAGE_PLANE_DEPTH = 1000;
+    var IMAGE_PLANE_DEPTH_PADDING = 0.1;
     var SAFE_DURATION_SECONDS = 180;
     var NON_SQUARE_HELPER_NAME = "__AE_TO_MAYA_WORLD_CENTER__";
 
@@ -38,7 +40,7 @@
         this.outputFile = null;
         this.shiftCenter = true;
         this.useWorkArea = true;
-        this.worldScale = DEFAULT_WORLD_SCALE * 0.01;
+        this.worldScale = DEFAULT_WORLD_SCALE * 0.001;
     }
 
     function ExportItem(layer, safeName, itemType) {
@@ -69,6 +71,7 @@
         this.scaleY = "";
         this.scaleZ = "";
         this.focalLength = "";
+        this.positionSamples = [];
     }
 
     function showError(message) {
@@ -508,7 +511,7 @@
             "10x",
             "100x"
         ]);
-        scaleDropdown.selection = 1;
+        scaleDropdown.selection = 0;
 
         var buttons = dialog.add("group");
         buttons.alignment = "right";
@@ -742,12 +745,17 @@
                 state = collectCookedLocatorState(layerCopy, layerCopyParent, sampleTime);
             }
 
-            data.translateX = appendKeyValue(data.translateX, frameNumber, (state[0] - origin[0]) * settings.worldScale);
-            data.translateY = appendKeyValue(data.translateY, frameNumber, (-(state[1] - origin[1])) * settings.worldScale);
-            data.translateZ = appendKeyValue(data.translateZ, frameNumber, (-state[2]) * settings.worldScale);
+            var translateX = (state[0] - origin[0]) * settings.worldScale;
+            var translateY = (-(state[1] - origin[1])) * settings.worldScale;
+            var translateZ = (-state[2]) * settings.worldScale;
+
+            data.translateX = appendKeyValue(data.translateX, frameNumber, translateX);
+            data.translateY = appendKeyValue(data.translateY, frameNumber, translateY);
+            data.translateZ = appendKeyValue(data.translateZ, frameNumber, translateZ);
             data.rotateX = appendKeyValue(data.rotateX, frameNumber, state[6]);
             data.rotateY = appendKeyValue(data.rotateY, frameNumber, -state[7]);
             data.rotateZ = appendKeyValue(data.rotateZ, frameNumber, -state[8]);
+            data.positionSamples.push([translateX, translateY, translateZ]);
 
             if (item.itemType === "camera") {
                 data.focalLength = appendKeyValue(data.focalLength, frameNumber, state[9]);
@@ -760,6 +768,56 @@
 
         data.frameCount = sampleRange.frameCount;
         return data;
+    }
+
+    function getDistanceBetweenPoints(pointA, pointB) {
+        var deltaX = pointB[0] - pointA[0];
+        var deltaY = pointB[1] - pointA[1];
+        var deltaZ = pointB[2] - pointA[2];
+
+        return Math.sqrt((deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ));
+    }
+
+    function getImagePlaneDepth(sampledItems, cameraData) {
+        var locatorItems = [];
+        var maxDistance = 0;
+        var i;
+        var j;
+
+        if (!cameraData || !cameraData.positionSamples.length) {
+            return DEFAULT_IMAGE_PLANE_DEPTH;
+        }
+
+        for (i = 0; i < sampledItems.length; i++) {
+            if (sampledItems[i].item.itemType === "locator" && sampledItems[i].positionSamples.length) {
+                locatorItems.push(sampledItems[i]);
+            }
+        }
+
+        if (!locatorItems.length) {
+            return DEFAULT_IMAGE_PLANE_DEPTH;
+        }
+
+        for (i = 0; i < cameraData.positionSamples.length; i++) {
+            var cameraPoint = cameraData.positionSamples[i];
+
+            for (j = 0; j < locatorItems.length; j++) {
+                if (i >= locatorItems[j].positionSamples.length) {
+                    continue;
+                }
+
+                maxDistance = Math.max(
+                    maxDistance,
+                    getDistanceBetweenPoints(cameraPoint, locatorItems[j].positionSamples[i])
+                );
+            }
+        }
+
+        if (maxDistance <= 0) {
+            return DEFAULT_IMAGE_PLANE_DEPTH;
+        }
+
+        return maxDistance * (1 + IMAGE_PLANE_DEPTH_PADDING);
     }
 
     function appendAnimCurve(lines, nodeName, curveType, keyCount, keyValues) {
@@ -810,7 +868,7 @@
         lines.push("");
     }
 
-    function appendImagePlaneNode(lines, plateData, cameraShapeName) {
+    function appendImagePlaneNode(lines, plateData, cameraShapeName, imagePlaneDepth) {
         var nodeName = plateData.safeName;
         var shapeName = nodeName + "Shape";
 
@@ -818,8 +876,9 @@
         lines.push("createNode imagePlane -n \"" + shapeName + "\" -p \"" + nodeName + "\";");
         lines.push("    setAttr -k off \".v\";");
         lines.push("    setAttr \".fc\" " + plateData.sequenceLength + ";");
-        lines.push("    setAttr \".d\" 1000;");
+        lines.push("    setAttr \".d\" " + formatNumber(imagePlaneDepth) + ";");
         lines.push("    setAttr \".imn\" -type \"string\" \"" + plateData.filePath + "\";");
+        lines.push("    setAttr \".colorSpace\" -type \"string\" \"sRGB\";");
         lines.push("    setAttr \".ufe\" yes;");
         lines.push("    setAttr \".w\" 10;");
         lines.push("    setAttr \".h\" 10;");
@@ -872,6 +931,7 @@
         var i;
         var cameraIndex = 0;
         var primaryCameraShapeName = null;
+        var primaryCameraData = null;
 
         lines.push("//Maya ASCII 2020 scene");
         lines.push("//Name: " + outputFile.name);
@@ -887,6 +947,7 @@
                 appendCameraNode(lines, sampledItems[i], compMeta, cameraIndex, groupName);
                 if (!primaryCameraShapeName) {
                     primaryCameraShapeName = sampledItems[i].item.safeName + "Shape";
+                    primaryCameraData = sampledItems[i];
                 }
                 cameraIndex += 1;
             } else {
@@ -898,7 +959,7 @@
             if (!primaryCameraShapeName) {
                 throw new Error("A numbered image sequence was selected, but no camera was exported to attach it to.");
             }
-            appendImagePlaneNode(lines, plateData, primaryCameraShapeName);
+            appendImagePlaneNode(lines, plateData, primaryCameraShapeName, getImagePlaneDepth(sampledItems, primaryCameraData));
         }
 
         lines.push("select -ne :time1;");
