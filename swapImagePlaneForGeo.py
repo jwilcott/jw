@@ -7,6 +7,7 @@ FIT_BEST = 1
 FIT_HORIZONTAL = 2
 FIT_VERTICAL = 3
 FIT_TO_SIZE = 4
+DISPLAY_NONE = 0
 
 
 def _short_name(node_name):
@@ -229,8 +230,8 @@ def _create_render_plane(base_name, visible_plane, camera_transform):
     plane_transform, _ = cmds.polyPlane(
         width=visible_plane["width"],
         height=visible_plane["height"],
-        subdivisionsX=1,
-        subdivisionsY=1,
+        subdivisionsX=5,
+        subdivisionsY=5,
         axis=(0, 0, 1),
         name=plane_name,
     )
@@ -357,12 +358,15 @@ def _build_redshift_network(base_name, image_plane_shape, visible_plane):
     cmds.connectAttr(file_node + ".outColor", material + ".emission_color", force=True)
     cmds.connectAttr(material + ".outColor", shading_group + ".surfaceShader", force=True)
 
+    if cmds.attributeQuery("diffuse_weight", node=material, exists=True):
+        cmds.setAttr(material + ".diffuse_weight", 0.0)
     if cmds.attributeQuery("emission_weight", node=material, exists=True):
         cmds.setAttr(material + ".emission_weight", 1.0)
     if cmds.attributeQuery("refl_weight", node=material, exists=True):
         cmds.setAttr(material + ".refl_weight", 0.0)
     if cmds.attributeQuery("refl_color", node=material, exists=True):
         cmds.setAttr(material + ".refl_color", 0.0, 0.0, 0.0, type="double3")
+    
 
     return {
         "material": material,
@@ -395,6 +399,8 @@ def swap_image_plane_for_geo():
             render_plane = _create_render_plane(base_name, visible_plane, camera_transform)
             network = _build_redshift_network(base_name, image_plane_shape, visible_plane)
             _assign_shader(render_plane["shape"], network["shading_group"])
+            if cmds.attributeQuery("displayMode", node=image_plane_shape, exists=True):
+                cmds.setAttr(image_plane_shape + ".displayMode", DISPLAY_NONE)
             created_geo.append(render_plane["transform"])
             print(
                 "Created {} from {} and constrained it to {}.".format(
