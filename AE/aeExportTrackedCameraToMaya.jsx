@@ -843,8 +843,8 @@
         lines.push("    setAttr \".vfa\" " + formatNumber(filmBack.height) + ";");
         lines.push("    setAttr \".ff\" 1;");
         lines.push("    setAttr \".cap\" -type \"double2\" " + formatNumber(filmBack.width) + " " + formatNumber(filmBack.height) + ";");
-        lines.push("    setAttr \".ncp\" 0.1;");
-        lines.push("    setAttr \".fcp\" " + formatNumber(40000 * compMeta.worldScale) + ";");
+        lines.push("    setAttr \".ncp\" 1;");
+        lines.push("    setAttr \".fcp\" 1000;");
         lines.push("    setAttr \".imn\" -type \"string\" \"" + nodeName + "\";");
         lines.push("    setAttr \".den\" -type \"string\" \"" + nodeName + "_Depth\";");
         lines.push("    setAttr \".man\" -type \"string\" \"" + nodeName + "_Mask\";");
