@@ -38,6 +38,19 @@ function Copy-IfExists {
     Write-Host "Copied: $(Split-Path -Leaf $From) -> $To"
 }
 
+function Remove-IfExists {
+    param(
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    Remove-Item -LiteralPath $Path -Force
+    Write-Host "Removed legacy file: $Path"
+}
+
 Start-AdminElevationIfNeeded
 
 if (-not (Test-Path -LiteralPath $SourceDir)) {
@@ -52,10 +65,69 @@ $scriptFiles = @(
 )
 
 $panelFiles = @(
+    'Teamocil Rx.jsx'
+)
+
+$legacyPanelFiles = @(
     'aeVersionDockPanel.jsx'
 )
 
 $includeFile = 'aeVersionCore.jsxinc'
+
+function Get-UserScriptRoots {
+    $roots = New-Object System.Collections.Generic.List[string]
+
+    $documentsAdobe = Join-Path $env:USERPROFILE 'Documents\Adobe'
+    if (Test-Path -LiteralPath $documentsAdobe) {
+        Get-ChildItem -LiteralPath $documentsAdobe -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'After Effects *' } |
+            ForEach-Object {
+                $scriptsRoot = Join-Path $_.FullName 'Scripts'
+                if (-not $roots.Contains($scriptsRoot)) {
+                    $roots.Add($scriptsRoot)
+                }
+            }
+    }
+
+    $roamingAdobe = Join-Path $env:APPDATA 'Adobe\After Effects'
+    if (Test-Path -LiteralPath $roamingAdobe) {
+        Get-ChildItem -LiteralPath $roamingAdobe -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $scriptsRoot = Join-Path $_.FullName 'Scripts'
+                if (-not $roots.Contains($scriptsRoot)) {
+                    $roots.Add($scriptsRoot)
+                }
+            }
+    }
+
+    return $roots
+}
+
+function Sync-AE-ScriptRoot {
+    param(
+        [string]$ScriptsDir
+    )
+
+    $panelsDir = Join-Path $ScriptsDir 'ScriptUI Panels'
+
+    New-Item -ItemType Directory -Path $ScriptsDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $panelsDir -Force | Out-Null
+
+    foreach ($file in $scriptFiles) {
+        Copy-IfExists -From (Join-Path $SourceDir $file) -To (Join-Path $ScriptsDir $file)
+    }
+
+    foreach ($file in $panelFiles) {
+        Copy-IfExists -From (Join-Path $SourceDir $file) -To (Join-Path $panelsDir $file)
+    }
+
+    foreach ($file in $legacyPanelFiles) {
+        Remove-IfExists -Path (Join-Path $panelsDir $file)
+    }
+
+    Copy-IfExists -From (Join-Path $SourceDir $includeFile) -To (Join-Path $ScriptsDir $includeFile)
+    Copy-IfExists -From (Join-Path $SourceDir $includeFile) -To (Join-Path $panelsDir $includeFile)
+}
 
 $aeRoots = Get-ChildItem 'C:\Program Files\Adobe' -Directory |
     Where-Object { $_.Name -like 'Adobe After Effects *' } |
@@ -70,22 +142,17 @@ Write-Host 'Detected AE installs:'
 $aeRoots | ForEach-Object { Write-Host "- $_" }
 
 foreach ($root in $aeRoots) {
-    $scriptsDir = Join-Path $root 'Scripts'
-    $panelsDir = Join-Path $scriptsDir 'ScriptUI Panels'
+    Sync-AE-ScriptRoot -ScriptsDir (Join-Path $root 'Scripts')
+}
 
-    New-Item -ItemType Directory -Path $scriptsDir -Force | Out-Null
-    New-Item -ItemType Directory -Path $panelsDir -Force | Out-Null
+$userScriptRoots = Get-UserScriptRoots
+if ($userScriptRoots.Count -gt 0) {
+    Write-Host 'Detected user AE script folders:'
+    $userScriptRoots | ForEach-Object { Write-Host "- $_" }
 
-    foreach ($file in $scriptFiles) {
-        Copy-IfExists -From (Join-Path $SourceDir $file) -To (Join-Path $scriptsDir $file)
+    foreach ($scriptsDir in $userScriptRoots) {
+        Sync-AE-ScriptRoot -ScriptsDir $scriptsDir
     }
-
-    foreach ($file in $panelFiles) {
-        Copy-IfExists -From (Join-Path $SourceDir $file) -To (Join-Path $panelsDir $file)
-    }
-
-    Copy-IfExists -From (Join-Path $SourceDir $includeFile) -To (Join-Path $scriptsDir $includeFile)
-    Copy-IfExists -From (Join-Path $SourceDir $includeFile) -To (Join-Path $panelsDir $includeFile)
 }
 
 Write-Host ''
