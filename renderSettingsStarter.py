@@ -6,8 +6,11 @@ import maya.cmds as cmds # type: ignore
 cmds.setAttr("defaultRenderGlobals.currentRenderer", "redshift", type="string")
 
 # Render Settings
+cmds.currentUnit(time="ntsc")  # 30 fps
 cmds.setAttr("redshiftOptions.imageFormat", 2)  # PNG
 cmds.setAttr("defaultRenderGlobals.animation", 1)  # Enable Animation
+cmds.setAttr("defaultRenderGlobals.startFrame", 1)
+cmds.setAttr("defaultRenderGlobals.endFrame", 30)
 cmds.setAttr("defaultRenderGlobals.imageFilePrefix", "<scene>/<scene>", type="string")  # Add scene name prefix
 cmds.setAttr("redshiftOptions.interactiveRenderingMode", 2)  # Buckets
 cmds.setAttr("redshiftOptions.denoisingEnabled", 1)  # Denoise
@@ -27,7 +30,7 @@ except Exception:
 # Check if Camera exists and create/import if it doesn't
 if not cmds.objExists("Camera"):
     # Import the camera from the specified path
-    camera_path = r"H:/Shared drives/Roblox Post Production/01 Assets/3D/Ref/Camera.ma"
+    camera_path = r"H:\Shared drives\Roblox Creative Studio\Projects\Roblox3D\assets\Utilities\Camera\Utilities_Camera_MASTER.mb"
     try:
         cmds.file(camera_path, i=True, ignoreVersion=True, mergeNamespacesOnClash=False, namespace=":")
         print(f"Imported camera from '{camera_path}'.")
