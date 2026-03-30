@@ -13,6 +13,45 @@ TARGET_HEIGHT = 20.0
 def bottom_pivot_from_bbox(bbox):
     return [(bbox[0] + bbox[3]) / 2, bbox[1], (bbox[2] + bbox[5]) / 2]
 
+def get_active_model_panel():
+    current_panel = cmds.getPanel(withFocus=True)
+    if current_panel and cmds.getPanel(typeOf=current_panel) == "modelPanel":
+        return current_panel
+
+    for panel in cmds.getPanel(type="modelPanel") or []:
+        try:
+            if cmds.modelPanel(panel, query=True, visible=True):
+                return panel
+        except Exception:
+            pass
+
+    return None
+
+def enable_viewport_options():
+    panel = get_active_model_panel()
+    if not panel:
+        cmds.warning("Could not find an active or visible model panel to update viewport settings.")
+        return
+
+    try:
+        cmds.modelEditor(
+            panel,
+            edit=True,
+            displayAppearance="smoothShaded",
+            displayTextures=True,
+            joints=True,
+            jointXray=True,
+        )
+    except Exception as e:
+        cmds.warning(f"Could not update viewport display options for {panel}: {e}")
+
+    for attr in ("multiSampleEnable", "ssaoEnable"):
+        try:
+            if cmds.attributeQuery(attr, node="hardwareRenderingGlobals", exists=True):
+                cmds.setAttr(f"hardwareRenderingGlobals.{attr}", 1)
+        except Exception as e:
+            cmds.warning(f"Could not enable {attr} on hardwareRenderingGlobals: {e}")
+
 def process_scene():
     # Collect all top-level mesh transforms in the outliner
     mesh_transforms = []
@@ -115,6 +154,7 @@ def process_scene():
                 cmds.warning(f"Could not freeze transforms for {obj}: {e}")
 
     cmds.select(clear=True)
+    enable_viewport_options()
 
     print("""Scene processing complete! Next Steps:
     Mat-RS
