@@ -200,16 +200,29 @@ if (typeof AEVersions === 'undefined') {
 
         function run(direction, logPrefix) {
             var prefix = logPrefix || 'Version';
+            var message = '';
 
             if (!app.project) {
-                $.writeln(prefix + ': no open project.');
-                return;
+                message = prefix + ': no open project.';
+                $.writeln(message);
+                return {
+                    updated: 0,
+                    skipped: [],
+                    message: message,
+                    reason: 'no_project'
+                };
             }
 
             var targets = collectTargets();
             if (targets.length === 0) {
-                $.writeln(prefix + ': select timeline layers or Project panel footage items.');
-                return;
+                message = prefix + ': select timeline layers or Project panel footage items.';
+                $.writeln(message);
+                return {
+                    updated: 0,
+                    skipped: [],
+                    message: message,
+                    reason: 'no_targets'
+                };
             }
 
             var updated = 0;
@@ -255,12 +268,18 @@ if (typeof AEVersions === 'undefined') {
             app.endUndoGroup();
 
             var label = direction > 0 ? 'Versioned up' : 'Versioned down';
-            var msg = label + ': ' + updated;
+            message = label + ': ' + updated;
             if (skipped.length) {
-                msg += '\n\nSkipped:\n- ' + skipped.join('\n- ');
+                message += '\n\nSkipped:\n- ' + skipped.join('\n- ');
             }
 
-            $.writeln(msg);
+            $.writeln(message);
+            return {
+                updated: updated,
+                skipped: skipped,
+                message: message,
+                reason: updated > 0 ? 'updated' : 'no_matches'
+            };
         }
 
         return {

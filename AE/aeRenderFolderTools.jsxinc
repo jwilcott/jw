@@ -103,26 +103,40 @@ var AERenderFolderTools = (function () {
         if (!folder) {
             message = prefix + ': no render queue output folder found.';
             $.writeln(message);
-            alert(message, prefix);
-            return false;
+            return {
+                opened: false,
+                message: message,
+                reason: 'no_folder'
+            };
         }
 
         if (!folder.exists) {
             message = prefix + ': folder does not exist on disk:\n' + folder.fsName;
             $.writeln(message);
-            alert(message, prefix);
-            return false;
+            return {
+                opened: false,
+                message: message,
+                reason: 'missing_on_disk'
+            };
         }
 
         if (!launchFolder(folder)) {
             message = prefix + ': failed to open folder:\n' + folder.fsName;
             $.writeln(message);
-            alert(message, prefix);
-            return false;
+            return {
+                opened: false,
+                message: message,
+                reason: 'launch_failed'
+            };
         }
 
-        $.writeln(prefix + ': opened ' + folder.fsName);
-        return true;
+        message = prefix + ': opened ' + folder.fsName;
+        $.writeln(message);
+        return {
+            opened: true,
+            message: message,
+            reason: 'opened'
+        };
     }
 
     return {

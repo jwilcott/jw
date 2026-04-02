@@ -74,8 +74,31 @@
         this.positionSamples = [];
     }
 
+    function getStatusReporter() {
+        try {
+            if ($.global && $.global.TeamocilRxSetStatus && typeof $.global.TeamocilRxSetStatus === "function") {
+                return $.global.TeamocilRxSetStatus;
+            }
+        } catch (err) {
+        }
+
+        return null;
+    }
+
+    function reportStatus(message, isError) {
+        var reporter = getStatusReporter();
+        if (reporter) {
+            reporter(message, !!isError);
+            return true;
+        }
+
+        return false;
+    }
+
     function showError(message) {
-        alert(message, SCRIPT_NAME);
+        if (!reportStatus(message, true)) {
+            alert(message, SCRIPT_NAME);
+        }
     }
 
     function formatNumber(value) {
@@ -1090,12 +1113,13 @@
 
         app.endUndoGroup();
 
-        alert(
-            "Exported " + sampledItems.length + " tracked item(s)" +
-                (plateData ? " and 1 image sequence" : "") +
-                " to:\r" + settings.outputFile.fsName,
-            SCRIPT_NAME
-        );
+        var successMessage = "Exported " + sampledItems.length + " tracked item(s)" +
+            (plateData ? " and 1 image sequence" : "") +
+            " to:\r" + settings.outputFile.fsName;
+
+        if (!reportStatus(successMessage, false)) {
+            alert(successMessage, SCRIPT_NAME);
+        }
     }
 
     exportToMaya();
