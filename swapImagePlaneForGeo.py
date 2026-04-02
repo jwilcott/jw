@@ -1,4 +1,5 @@
 import maya.cmds as cmds  # type: ignore
+import maya.api.OpenMaya as om  # type: ignore
 
 
 MM_PER_INCH = 25.4
@@ -63,22 +64,52 @@ def _list_selected_image_plane_shapes():
     return ordered
 
 
-def _get_attached_camera(image_plane_shape):
+def _get_image_plane_transform(image_plane_shape):
     image_plane_transform = cmds.listRelatives(image_plane_shape, parent=True, fullPath=True) or []
     if not image_plane_transform:
         raise RuntimeError("Could not find transform for image plane {}.".format(image_plane_shape))
+    return image_plane_transform[0]
 
-    camera_shape = cmds.listRelatives(image_plane_transform[0], parent=True, fullPath=True) or []
-    if not camera_shape or cmds.nodeType(camera_shape[0]) != "camera":
-        raise RuntimeError(
-            "Image plane {} is not attached to a camera shape.".format(_short_name(image_plane_shape))
-        )
 
-    camera_transform = cmds.listRelatives(camera_shape[0], parent=True, fullPath=True) or []
+def _get_camera_shape(node_name):
+    if not node_name:
+        return None
+
+    node_matches = cmds.ls(node_name, long=True) or [node_name]
+    node_path = node_matches[0]
+    node_type = cmds.nodeType(node_path)
+
+    if node_type == "camera":
+        return node_path
+
+    if node_type == "transform":
+        shapes = cmds.listRelatives(node_path, shapes=True, fullPath=True) or []
+        for shape in shapes:
+            if cmds.nodeType(shape) == "camera":
+                return shape
+
+    return None
+
+
+def _get_attached_camera(image_plane_shape):
+    camera_name = None
+    try:
+        camera_name = cmds.imagePlane(image_plane_shape, query=True, camera=True)
+    except Exception:
+        camera_name = None
+
+    if isinstance(camera_name, (list, tuple)):
+        camera_name = camera_name[0] if camera_name else None
+
+    camera_shape = _get_camera_shape(camera_name)
+    if not camera_shape:
+        return None
+
+    camera_transform = cmds.listRelatives(camera_shape, parent=True, fullPath=True) or []
     if not camera_transform:
-        raise RuntimeError("Could not find camera transform for {}.".format(camera_shape[0]))
+        raise RuntimeError("Could not find camera transform for {}.".format(camera_shape))
 
-    return image_plane_transform[0], camera_shape[0], camera_transform[0]
+    return camera_shape, camera_transform[0]
 
 
 def _get_attr(node, attr_name, default_value=None):
@@ -103,7 +134,7 @@ def _aperture_to_world(depth_value, aperture_inches, focal_length_mm):
     return depth_value * ((aperture_inches * MM_PER_INCH) / focal_length_mm)
 
 
-def _compute_visible_plane(image_plane_shape, camera_shape):
+def _compute_attached_visible_plane(image_plane_shape, camera_shape):
     depth_value = float(_get_attr(image_plane_shape, "depth", 100.0))
     offset_x = float(_get_attr(image_plane_shape, "offsetX", 0.0))
     offset_y = float(_get_attr(image_plane_shape, "offsetY", 0.0))
@@ -178,6 +209,31 @@ def _compute_visible_plane(image_plane_shape, camera_shape):
     }
 
 
+def _unpack_vector(value, default_value):
+    if isinstance(value, list) and len(value) == 1:
+        value = value[0]
+    if value is None:
+        return default_value
+    return tuple(float(component) for component in value)
+
+
+def _compute_free_visible_plane(image_plane_shape):
+    center_value = _unpack_vector(_get_attr(image_plane_shape, "imageCenter", None), (0.0, 0.0, 0.0))
+    width_value = float(_get_attr(image_plane_shape, "width", 10.0))
+    height_value = float(_get_attr(image_plane_shape, "height", 10.0))
+    image_size = _safe_image_size(image_plane_shape)
+
+    return {
+        "center": center_value,
+        "width": width_value,
+        "height": height_value,
+        "crop_u": 1.0,
+        "crop_v": 1.0,
+        "image_width": image_size[0] if image_size else None,
+        "image_height": image_size[1] if image_size else None,
+    }
+
+
 def _compute_place2d_settings(image_plane_shape, visible_plane):
     coverage_u = 1.0
     coverage_v = 1.0
@@ -214,9 +270,44 @@ def _compute_place2d_settings(image_plane_shape, visible_plane):
     }
 
 
-def _create_render_plane(base_name, visible_plane, camera_transform):
-    group_name = _make_unique_name("{}_render_GRP".format(base_name))
+def _create_plane_mesh(base_name, visible_plane):
     plane_name = _make_unique_name("{}_render_GEO".format(base_name))
+
+    plane_transform, _ = cmds.polyPlane(
+        width=visible_plane["width"],
+        height=visible_plane["height"],
+        subdivisionsX=5,
+        subdivisionsY=5,
+        axis=(0, 0, 1),
+        name=plane_name,
+    )
+    plane_shape = (cmds.listRelatives(plane_transform, shapes=True, fullPath=True) or [None])[0]
+
+    if plane_shape and cmds.attributeQuery("castsShadows", node=plane_shape, exists=True):
+        cmds.setAttr(plane_shape + ".castsShadows", 0)
+
+    return plane_transform, plane_shape
+
+
+def _connect_matching_scale(source_transform, target_transform):
+    for axis in ("X", "Y", "Z"):
+        source_attr = "{}.scale{}".format(source_transform, axis)
+        target_attr = "{}.scale{}".format(target_transform, axis)
+        if not cmds.isConnected(source_attr, target_attr):
+            cmds.connectAttr(source_attr, target_attr, force=True)
+
+
+def _world_to_local_point(world_point, transform_node):
+    world_inverse = cmds.getAttr(transform_node + ".worldInverseMatrix[0]")
+    if isinstance(world_inverse, list) and len(world_inverse) == 1:
+        world_inverse = world_inverse[0]
+
+    local_point = om.MPoint(world_point[0], world_point[1], world_point[2], 1.0) * om.MMatrix(world_inverse)
+    return local_point.x, local_point.y, local_point.z
+
+
+def _create_attached_render_plane(base_name, visible_plane, camera_transform):
+    group_name = _make_unique_name("{}_render_GRP".format(base_name))
 
     group = cmds.createNode("transform", name=group_name)
     cmds.delete(cmds.parentConstraint(camera_transform, group, maintainOffset=False))
@@ -227,15 +318,8 @@ def _create_render_plane(base_name, visible_plane, camera_transform):
         name=_make_unique_name("{}_parentConstraint".format(group_name)),
     )[0]
 
-    plane_transform, _ = cmds.polyPlane(
-        width=visible_plane["width"],
-        height=visible_plane["height"],
-        subdivisionsX=5,
-        subdivisionsY=5,
-        axis=(0, 0, 1),
-        name=plane_name,
-    )
-    cmds.parent(plane_transform, group)
+    plane_transform, _ = _create_plane_mesh(base_name, visible_plane)
+    plane_transform = cmds.parent(plane_transform, group)[0]
     plane_shape = (cmds.listRelatives(plane_transform, shapes=True, fullPath=True) or [None])[0]
 
     cmds.setAttr(plane_transform + ".translateX", visible_plane["center_x"])
@@ -243,13 +327,42 @@ def _create_render_plane(base_name, visible_plane, camera_transform):
     cmds.setAttr(plane_transform + ".translateZ", -visible_plane["depth"])
     cmds.setAttr(plane_transform + ".rotateZ", -visible_plane["rotate"])
 
-    for axis in ("X", "Y", "Z"):
-        source_attr = "{}.scale{}".format(camera_transform, axis)
-        target_attr = "{}.scale{}".format(group, axis)
-        if not cmds.isConnected(source_attr, target_attr):
-            cmds.connectAttr(source_attr, target_attr, force=True)
+    _connect_matching_scale(camera_transform, group)
 
     return {
+        "driver": camera_transform,
+        "group": group,
+        "constraint": constraint,
+        "transform": plane_transform,
+        "shape": plane_shape,
+    }
+
+
+def _create_free_render_plane(base_name, visible_plane, image_plane_transform):
+    group_name = _make_unique_name("{}_render_GRP".format(base_name))
+
+    group = cmds.createNode("transform", name=group_name)
+    cmds.delete(cmds.parentConstraint(image_plane_transform, group, maintainOffset=False))
+    constraint = cmds.parentConstraint(
+        image_plane_transform,
+        group,
+        maintainOffset=False,
+        name=_make_unique_name("{}_parentConstraint".format(group_name)),
+    )[0]
+
+    plane_transform, _ = _create_plane_mesh(base_name, visible_plane)
+    plane_transform = cmds.parent(plane_transform, group)[0]
+    plane_shape = (cmds.listRelatives(plane_transform, shapes=True, fullPath=True) or [None])[0]
+
+    _connect_matching_scale(image_plane_transform, group)
+
+    local_center = _world_to_local_point(visible_plane["center"], group)
+    cmds.setAttr(plane_transform + ".translateX", local_center[0])
+    cmds.setAttr(plane_transform + ".translateY", local_center[1])
+    cmds.setAttr(plane_transform + ".translateZ", local_center[2])
+
+    return {
+        "driver": image_plane_transform,
         "group": group,
         "constraint": constraint,
         "transform": plane_transform,
@@ -303,6 +416,64 @@ def _copy_value_or_connection(source_plug, target_plug):
         cmds.setAttr(target_plug, value)
 
 
+def _copy_string_attr(source_node, target_node, attr_name):
+    if not cmds.attributeQuery(attr_name, node=source_node, exists=True):
+        return False
+    if not cmds.attributeQuery(attr_name, node=target_node, exists=True):
+        return False
+
+    value = cmds.getAttr("{}.{}".format(source_node, attr_name))
+    if not value:
+        return False
+
+    cmds.setAttr("{}.{}".format(target_node, attr_name), value, type="string")
+    return True
+
+
+def _get_connected_source_file(image_plane_shape):
+    if not cmds.attributeQuery("sourceTexture", node=image_plane_shape, exists=True):
+        return None
+
+    source_nodes = cmds.listConnections(
+        image_plane_shape + ".sourceTexture",
+        source=True,
+        destination=False,
+    ) or []
+
+    for source_node in source_nodes:
+        if cmds.nodeType(source_node) == "file":
+            return source_node
+
+    return None
+
+
+def _copy_image_source(image_plane_shape, file_node):
+    source_file = _get_connected_source_file(image_plane_shape)
+
+    if source_file:
+        if _copy_string_attr(source_file, file_node, "fileTextureName"):
+            if not _copy_string_attr(image_plane_shape, file_node, "colorSpace"):
+                _copy_string_attr(source_file, file_node, "colorSpace")
+
+            if cmds.attributeQuery("useFrameExtension", node=source_file, exists=True):
+                cmds.setAttr(file_node + ".useFrameExtension", cmds.getAttr(source_file + ".useFrameExtension"))
+
+            if cmds.attributeQuery("frameOffset", node=source_file, exists=True):
+                _copy_value_or_connection(source_file + ".frameOffset", file_node + ".frameOffset")
+
+            if cmds.attributeQuery("frameExtension", node=source_file, exists=True):
+                _copy_value_or_connection(source_file + ".frameExtension", file_node + ".frameExtension")
+
+            return "source_file"
+
+    image_name = _get_attr(image_plane_shape, "imageName", "")
+    if image_name:
+        cmds.setAttr(file_node + ".fileTextureName", image_name, type="string")
+        return "image_plane"
+
+    return None
+
+
 def _build_redshift_network(base_name, image_plane_shape, visible_plane):
     material_name = _make_unique_name("{}_RS_MTL".format(base_name))
     shading_group_name = _make_unique_name("{}SG".format(material_name))
@@ -324,22 +495,20 @@ def _build_redshift_network(base_name, image_plane_shape, visible_plane):
     cmds.setAttr(place2d + ".repeatU", settings["repeat_u"])
     cmds.setAttr(place2d + ".repeatV", 1.0)
 
-    image_name = _get_attr(image_plane_shape, "imageName", "")
-    if image_name:
-        cmds.setAttr(file_node + ".fileTextureName", image_name, type="string")
+    image_source_mode = _copy_image_source(image_plane_shape, file_node)
 
     if cmds.attributeQuery("colorSpace", node=image_plane_shape, exists=True):
         color_space = cmds.getAttr(image_plane_shape + ".colorSpace")
         if color_space and cmds.attributeQuery("colorSpace", node=file_node, exists=True):
             cmds.setAttr(file_node + ".colorSpace", color_space, type="string")
 
-    if cmds.attributeQuery("useFrameExtension", node=image_plane_shape, exists=True):
+    if image_source_mode != "source_file" and cmds.attributeQuery("useFrameExtension", node=image_plane_shape, exists=True):
         cmds.setAttr(file_node + ".useFrameExtension", cmds.getAttr(image_plane_shape + ".useFrameExtension"))
 
-    if cmds.attributeQuery("frameOffset", node=image_plane_shape, exists=True):
+    if image_source_mode != "source_file" and cmds.attributeQuery("frameOffset", node=image_plane_shape, exists=True):
         _copy_value_or_connection(image_plane_shape + ".frameOffset", file_node + ".frameOffset")
 
-    if cmds.attributeQuery("frameExtension", node=image_plane_shape, exists=True):
+    if image_source_mode != "source_file" and cmds.attributeQuery("frameExtension", node=image_plane_shape, exists=True):
         _copy_value_or_connection(image_plane_shape + ".frameExtension", file_node + ".frameExtension")
 
     if cmds.attributeQuery("frameCache", node=image_plane_shape, exists=True) and cmds.attributeQuery("useCache", node=file_node, exists=True):
@@ -393,10 +562,18 @@ def swap_image_plane_for_geo():
 
     for image_plane_shape in image_plane_shapes:
         try:
-            image_plane_transform, camera_shape, camera_transform = _get_attached_camera(image_plane_shape)
+            image_plane_transform = _get_image_plane_transform(image_plane_shape)
             base_name = _short_name(image_plane_transform)
-            visible_plane = _compute_visible_plane(image_plane_shape, camera_shape)
-            render_plane = _create_render_plane(base_name, visible_plane, camera_transform)
+            camera_info = _get_attached_camera(image_plane_shape)
+
+            if camera_info:
+                camera_shape, camera_transform = camera_info
+                visible_plane = _compute_attached_visible_plane(image_plane_shape, camera_shape)
+                render_plane = _create_attached_render_plane(base_name, visible_plane, camera_transform)
+            else:
+                visible_plane = _compute_free_visible_plane(image_plane_shape)
+                render_plane = _create_free_render_plane(base_name, visible_plane, image_plane_transform)
+
             network = _build_redshift_network(base_name, image_plane_shape, visible_plane)
             _assign_shader(render_plane["shape"], network["shading_group"])
             if cmds.attributeQuery("displayMode", node=image_plane_shape, exists=True):
@@ -406,7 +583,7 @@ def swap_image_plane_for_geo():
                 "Created {} from {} and constrained it to {}.".format(
                     render_plane["transform"],
                     image_plane_shape,
-                    camera_transform,
+                    render_plane["driver"],
                 )
             )
         except Exception as exc:

@@ -72,7 +72,10 @@ $legacyPanelFiles = @(
     'aeVersionDockPanel.jsx'
 )
 
-$includeFile = 'aeVersionCore.jsxinc'
+$includeFiles = @(
+    'aeVersionCore.jsxinc',
+    'aeRenderFolderTools.jsxinc'
+)
 
 function Get-UserScriptRoots {
     $roots = New-Object System.Collections.Generic.List[string]
@@ -125,8 +128,10 @@ function Sync-AE-ScriptRoot {
         Remove-IfExists -Path (Join-Path $panelsDir $file)
     }
 
-    Copy-IfExists -From (Join-Path $SourceDir $includeFile) -To (Join-Path $ScriptsDir $includeFile)
-    Copy-IfExists -From (Join-Path $SourceDir $includeFile) -To (Join-Path $panelsDir $includeFile)
+    foreach ($file in $includeFiles) {
+        Copy-IfExists -From (Join-Path $SourceDir $file) -To (Join-Path $ScriptsDir $file)
+        Copy-IfExists -From (Join-Path $SourceDir $file) -To (Join-Path $panelsDir $file)
+    }
 }
 
 $aeRoots = Get-ChildItem 'C:\Program Files\Adobe' -Directory |

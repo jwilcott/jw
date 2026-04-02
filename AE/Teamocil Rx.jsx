@@ -5,16 +5,6 @@ function getTeamocilSearchRoots() {
     var roots = [];
 
     try {
-        if (app && app.path) {
-            var appFolder = Folder(app.path);
-            if (appFolder && appFolder.exists) {
-                roots.push(new Folder(appFolder.fsName + '/Scripts/ScriptUI Panels'));
-                roots.push(new Folder(appFolder.fsName + '/Scripts'));
-            }
-        }
-    } catch (e) {}
-
-    try {
         if ($.fileName) {
             var thisFile = new File($.fileName);
             if (thisFile && thisFile.exists && thisFile.parent) {
@@ -25,6 +15,16 @@ function getTeamocilSearchRoots() {
             }
         }
     } catch (err) {}
+
+    try {
+        if (app && app.path) {
+            var appFolder = Folder(app.path);
+            if (appFolder && appFolder.exists) {
+                roots.push(new Folder(appFolder.fsName + '/Scripts/ScriptUI Panels'));
+                roots.push(new Folder(appFolder.fsName + '/Scripts'));
+            }
+        }
+    } catch (e) {}
 
     return roots;
 }
@@ -78,6 +78,15 @@ loadTeamocilCore();
         throw new Error('Unable to locate script: ' + scriptName);
     }
 
+    function openLastRenderedFolder() {
+        try {
+            $.evalFile(getPanelSiblingScript('aeRenderFolderTools.jsxinc'));
+            AERenderFolderTools.openLastRenderedFolder(PANEL_NAME);
+        } catch (err) {
+            alert('Unable to open last render folder.\n' + err.toString(), PANEL_NAME);
+        }
+    }
+
     function runTrackedCameraExport() {
         try {
             $.evalFile(getPanelSiblingScript('aeExportTrackedCameraToMaya.jsx'));
@@ -112,7 +121,7 @@ loadTeamocilCore();
             runVersion(-1);
         });
         addToolButton(group, '\uD83D\uDCC1', 'Open Last Render Folder', function () {
-            AEVersions.openLastRenderedFolder(PANEL_NAME);
+            openLastRenderedFolder();
         });
         addToolButton(group, '\u25CE', 'Export Tracked Camera To Maya', function () {
             runTrackedCameraExport();

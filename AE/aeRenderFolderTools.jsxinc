@@ -1,0 +1,131 @@
+// Shared render-folder helper for Teamocil Rx.
+// This file is evaluated on demand so folder-opening fixes can land without restarting AE.
+
+var AERenderFolderTools = (function () {
+    function getOutputFolderFromQueueItem(queueItem) {
+        if (!queueItem || !queueItem.numOutputModules) {
+            return null;
+        }
+
+        for (var i = queueItem.numOutputModules; i >= 1; i--) {
+            var outputFile = null;
+
+            try {
+                var module = queueItem.outputModule(i);
+                outputFile = module ? module.file : null;
+            } catch (e) {
+                outputFile = null;
+            }
+
+            if (outputFile && outputFile.parent) {
+                return outputFile.parent;
+            }
+        }
+
+        return null;
+    }
+
+    function getLastRenderFolder() {
+        if (!app.project || !app.project.renderQueue) {
+            return null;
+        }
+
+        var queue = app.project.renderQueue;
+        var fallback = null;
+
+        for (var i = queue.numItems; i >= 1; i--) {
+            var item = queue.item(i);
+            var folder = getOutputFolderFromQueueItem(item);
+            if (!folder) {
+                continue;
+            }
+
+            if (item.status === RQItemStatus.DONE) {
+                return folder;
+            }
+
+            if (!fallback) {
+                fallback = folder;
+            }
+        }
+
+        return fallback;
+    }
+
+    function quoteForWindowsArg(text) {
+        return '"' + String(text).replace(/"/g, '""') + '"';
+    }
+
+    function quoteForPosixShell(text) {
+        return '"' + String(text).replace(/(["\\$`])/g, '\\$1') + '"';
+    }
+
+    function launchFolder(folder) {
+        var opened = false;
+        var osName = $.os ? $.os.toLowerCase() : '';
+
+        try {
+            opened = folder.execute();
+        } catch (err) {
+            opened = false;
+        }
+
+        if (opened) {
+            return true;
+        }
+
+        if (typeof system === 'undefined' || !system.callSystem) {
+            return false;
+        }
+
+        try {
+            if (osName.indexOf('windows') !== -1) {
+                system.callSystem('explorer.exe ' + quoteForWindowsArg(folder.fsName));
+                return true;
+            }
+
+            if (osName.indexOf('mac') !== -1) {
+                system.callSystem('/usr/bin/open ' + quoteForPosixShell(folder.fsName));
+                return true;
+            }
+        } catch (callErr) {
+            return false;
+        }
+
+        return false;
+    }
+
+    function openLastRenderedFolder(logPrefix) {
+        var prefix = logPrefix || 'Version';
+        var folder = getLastRenderFolder();
+        var message = '';
+
+        if (!folder) {
+            message = prefix + ': no render queue output folder found.';
+            $.writeln(message);
+            alert(message, prefix);
+            return false;
+        }
+
+        if (!folder.exists) {
+            message = prefix + ': folder does not exist on disk:\n' + folder.fsName;
+            $.writeln(message);
+            alert(message, prefix);
+            return false;
+        }
+
+        if (!launchFolder(folder)) {
+            message = prefix + ': failed to open folder:\n' + folder.fsName;
+            $.writeln(message);
+            alert(message, prefix);
+            return false;
+        }
+
+        $.writeln(prefix + ': opened ' + folder.fsName);
+        return true;
+    }
+
+    return {
+        openLastRenderedFolder: openLastRenderedFolder
+    };
+})();
