@@ -1,8 +1,8 @@
 // Shared core for AE version up/down scripts.
 
-if (typeof $.global.AEVersions === 'undefined') {
-    $.global.AEVersions = (function () {
+$.global.AEVersions = (function (existingApi) {
         var MAX_VERSION_JUMPS = 5;
+        var api = existingApi || {};
 
         function isDigit(ch) {
             return ch >= '0' && ch <= '9';
@@ -53,7 +53,88 @@ if (typeof $.global.AEVersions === 'undefined') {
             return fileName.substring(0, token.start) + replacement + fileName.substring(token.end);
         }
 
-        function findCandidateInParentSiblings(srcFile, candidateName) {
+        function escapeRegExp(text) {
+            return text.replace(/([.*+?^${}()|\[\]\\])/g, '\\$1');
+        }
+
+        function parseTrailingNumberToken(fileName) {
+            var match = fileName.match(/^(.*?)(\d+)(\.[^\.]+)$/);
+            if (!match) {
+                return null;
+            }
+
+            return {
+                prefix: match[1],
+                digits: match[2],
+                extension: match[3]
+            };
+        }
+
+        function findSequenceCandidateInFolder(folder, candidateName) {
+            var sequenceToken = parseTrailingNumberToken(candidateName);
+            var entries, matches, pattern, i;
+
+            if (!sequenceToken || !(folder instanceof Folder) || !folder.exists) {
+                return null;
+            }
+
+            pattern = new RegExp(
+                '^' +
+                escapeRegExp(sequenceToken.prefix) +
+                '(\\d+)' +
+                escapeRegExp(sequenceToken.extension) +
+                '$',
+                'i'
+            );
+
+            entries = folder.getFiles();
+            matches = [];
+
+            for (i = 0; i < entries.length; i++) {
+                if (!(entries[i] instanceof File)) {
+                    continue;
+                }
+
+                if (pattern.test(entries[i].name)) {
+                    matches.push(entries[i]);
+                }
+            }
+
+            if (!matches.length) {
+                return null;
+            }
+
+            matches.sort(function (a, b) {
+                var an = a.name.toLowerCase();
+                var bn = b.name.toLowerCase();
+                if (an < bn) return -1;
+                if (an > bn) return 1;
+                return 0;
+            });
+
+            return matches[0];
+        }
+
+        function findCandidateInFolder(folder, candidateName, allowSequenceFrameMismatch) {
+            var exactMatch;
+
+            if (!(folder instanceof Folder) || !folder.exists) {
+                return null;
+            }
+
+            exactMatch = new File(folder.fsName + '/' + candidateName);
+            if (exactMatch.exists) {
+                return exactMatch;
+            }
+
+            if (allowSequenceFrameMismatch) {
+                return findSequenceCandidateInFolder(folder, candidateName);
+            }
+
+            return null;
+        }
+
+        function findCandidateInParentSiblings(srcFile, candidateName, allowSequenceFrameMismatch) {
             var parentDir = srcFile.parent && srcFile.parent.parent ? srcFile.parent.parent : null;
             if (!parentDir || !(parentDir instanceof Folder) || !parentDir.exists) {
                 return null;
@@ -82,9 +163,8 @@ if (typeof $.global.AEVersions === 'undefined') {
                     continue;
                 }
 
-                var siblingPath = folders[i].fsName + '/' + candidateName;
-                var siblingFile = new File(siblingPath);
-                if (siblingFile.exists) {
+                var siblingFile = findCandidateInFolder(folders[i], candidateName, allowSequenceFrameMismatch);
+                if (siblingFile) {
                     return siblingFile;
                 }
             }
@@ -92,7 +172,7 @@ if (typeof $.global.AEVersions === 'undefined') {
             return null;
         }
 
-        function findVersionFile(srcFile, direction) {
+        function findVersionFile(srcFile, direction, allowSequenceFrameMismatch) {
             var token = findLastVersionToken(srcFile.name);
             if (!token) {
                 return null;
@@ -109,12 +189,12 @@ if (typeof $.global.AEVersions === 'undefined') {
 
                 var candidateName = setVersionInName(srcFile.name, token, targetVersion);
 
-                var sameFolder = new File(srcFile.parent.fsName + '/' + candidateName);
-                if (sameFolder.exists) {
+                var sameFolder = findCandidateInFolder(srcFile.parent, candidateName, allowSequenceFrameMismatch);
+                if (sameFolder) {
                     return sameFolder;
                 }
 
-                var siblingFolderFile = findCandidateInParentSiblings(srcFile, candidateName);
+                var siblingFolderFile = findCandidateInParentSiblings(srcFile, candidateName, allowSequenceFrameMismatch);
                 if (siblingFolderFile) {
                     return siblingFolderFile;
                 }
@@ -123,8 +203,118 @@ if (typeof $.global.AEVersions === 'undefined') {
             return null;
         }
 
+        function copyColorArray(value) {
+            if (!value || value.length === undefined) {
+                return null;
+            }
+
+            var copy = [];
+            for (var i = 0; i < value.length; i++) {
+                copy.push(value[i]);
+            }
+            return copy;
+        }
+
+        function snapshotInterpretation(footageItem) {
+            var source = null;
+            var interpretation = {
+                alphaMode: null,
+                invertAlpha: null,
+                premulColor: null
+            };
+
+            try {
+                source = footageItem.mainSource;
+            } catch (err) {
+                source = null;
+            }
+
+            if (!source) {
+                return interpretation;
+            }
+
+            try {
+                interpretation.alphaMode = source.alphaMode;
+            } catch (alphaErr) {
+            }
+
+            try {
+                interpretation.invertAlpha = source.invertAlpha;
+            } catch (invertErr) {
+            }
+
+            try {
+                interpretation.premulColor = copyColorArray(source.premulColor);
+            } catch (premulErr) {
+            }
+
+            return interpretation;
+        }
+
+        function restoreInterpretation(footageItem, interpretation) {
+            var source = null;
+
+            if (!interpretation) {
+                return;
+            }
+
+            try {
+                source = footageItem.mainSource;
+            } catch (err) {
+                source = null;
+            }
+
+            if (!source) {
+                return;
+            }
+
+            if (interpretation.alphaMode !== null) {
+                try {
+                    source.alphaMode = interpretation.alphaMode;
+                } catch (alphaErr) {
+                }
+            }
+
+            if (interpretation.invertAlpha !== null) {
+                try {
+                    source.invertAlpha = interpretation.invertAlpha;
+                } catch (invertErr) {
+                }
+            }
+
+            if (interpretation.premulColor !== null) {
+                try {
+                    source.premulColor = interpretation.premulColor;
+                } catch (premulErr) {
+                }
+            }
+        }
+
+        function buildReplacementAttempts(newFile) {
+            var attempts = [];
+
+            if (!newFile) {
+                return attempts;
+            }
+
+            attempts.push(newFile);
+
+            try {
+                if (newFile.fsName) {
+                    attempts.push(new File(newFile.fsName));
+                }
+            } catch (err) {
+            }
+
+            return attempts;
+        }
+
         function replaceFootage(footageItem, newFile) {
             var isStill = true;
+            var interpretation = snapshotInterpretation(footageItem);
+            var attempts = buildReplacementAttempts(newFile);
+            var lastError = null;
+            var i;
 
             try {
                 isStill = footageItem.mainSource.isStill;
@@ -132,10 +322,23 @@ if (typeof $.global.AEVersions === 'undefined') {
                 isStill = true;
             }
 
-            if (!isStill && footageItem.replaceWithSequence) {
-                footageItem.replaceWithSequence(newFile, false);
-            } else {
-                footageItem.replace(newFile);
+            for (i = 0; i < attempts.length; i++) {
+                try {
+                    if (!isStill && footageItem.replaceWithSequence) {
+                        footageItem.replaceWithSequence(attempts[i], false);
+                    } else {
+                        footageItem.replace(attempts[i]);
+                    }
+
+                    restoreInterpretation(footageItem, interpretation);
+                    return;
+                } catch (err) {
+                    lastError = err;
+                }
+            }
+
+            if (lastError) {
+                throw lastError;
             }
         }
 
@@ -198,9 +401,21 @@ if (typeof $.global.AEVersions === 'undefined') {
             return targets;
         }
 
+        function buildSummaryMessage(direction, updated, skippedCount) {
+            var label = direction > 0 ? 'Versioned up' : 'Versioned down';
+            var message = label + ': ' + updated;
+
+            if (skippedCount > 0) {
+                message += ' | skipped: ' + skippedCount;
+            }
+
+            return message;
+        }
+
         function run(direction, logPrefix) {
             var prefix = logPrefix || 'Version';
             var message = '';
+            var statusMessage = '';
 
             if (!app.project) {
                 message = prefix + ': no open project.';
@@ -241,13 +456,20 @@ if (typeof $.global.AEVersions === 'undefined') {
                 }
 
                 var srcFile = footage.mainSource.file;
+                var allowSequenceFrameMismatch = false;
                 var token = findLastVersionToken(srcFile.name);
                 if (!token) {
                     skipped.push(target.name + ' (no v## token found)');
                     continue;
                 }
 
-                var newFile = findVersionFile(srcFile, direction);
+                try {
+                    allowSequenceFrameMismatch = !footage.mainSource.isStill;
+                } catch (isStillErr) {
+                    allowSequenceFrameMismatch = false;
+                }
+
+                var newFile = findVersionFile(srcFile, direction, allowSequenceFrameMismatch);
                 if (!newFile) {
                     if (direction > 0) {
                         skipped.push(target.name + ' (next version not found in current/sibling folders)');
@@ -267,8 +489,8 @@ if (typeof $.global.AEVersions === 'undefined') {
 
             app.endUndoGroup();
 
-            var label = direction > 0 ? 'Versioned up' : 'Versioned down';
-            message = label + ': ' + updated;
+            statusMessage = buildSummaryMessage(direction, updated, skipped.length);
+            message = statusMessage;
             if (skipped.length) {
                 message += '\n\nSkipped:\n- ' + skipped.join('\n- ');
             }
@@ -277,15 +499,15 @@ if (typeof $.global.AEVersions === 'undefined') {
             return {
                 updated: updated,
                 skipped: skipped,
+                statusMessage: statusMessage,
                 message: message,
                 reason: updated > 0 ? 'updated' : 'no_matches'
             };
         }
 
-        return {
-            run: run
-        };
-    })();
-}
+        api.run = run;
+
+        return api;
+    })($.global.AEVersions);
 
 var AEVersions = $.global.AEVersions;

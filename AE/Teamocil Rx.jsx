@@ -48,10 +48,6 @@ function resolveTeamocilSiblingFile(fileName) {
 }
 
 function loadTeamocilCore() {
-    if (typeof $.global.AEVersions !== 'undefined') {
-        return $.global.AEVersions;
-    }
-
     var coreFile = resolveTeamocilSiblingFile('aeVersionCore.jsxinc');
     if (!coreFile) {
         throw new Error('Unable to locate aeVersionCore.jsxinc');
@@ -115,11 +111,11 @@ var AEVersions = loadTeamocilCore();
 
     function runVersion(direction) {
         try {
-            var result = AEVersions.run(direction, PANEL_NAME);
+            var result = loadTeamocilCore().run(direction, PANEL_NAME);
             if (!result) {
                 return;
             }
-            setStatus(result.message, result.reason !== 'updated');
+            setStatus(result.statusMessage || result.message, result.updated === 0);
         } catch (err) {
             setStatus('Unable to version selected sources. ' + err.toString(), true);
         }

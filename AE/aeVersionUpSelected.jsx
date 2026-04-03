@@ -3,5 +3,5 @@
 $.evalFile(File(File($.fileName).parent.fsName + '/aeVersionCore.jsxinc'));
 
 (function versionUpSelectedItems() {
-    AEVersions.run(1, 'Version Up');
+    $.global.AEVersions.run(1, 'Version Up');
 })();

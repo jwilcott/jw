@@ -4,59 +4,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Start-AdminElevationIfNeeded {
-    $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
-    $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
-    if (-not $isAdmin) {
-        Write-Host 'Requesting Administrator privileges...'
-        $argList = @(
-            '-NoProfile'
-            '-ExecutionPolicy', 'Bypass'
-            '-File', ('"{0}"' -f $PSCommandPath)
-            '-SourceDir', ('"{0}"' -f $SourceDir)
-        ) -join ' '
-
-        Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList | Out-Null
-        exit 0
-    }
-}
-
-function Copy-IfExists {
-    param(
-        [string]$From,
-        [string]$To
-    )
-
-    if (-not (Test-Path -LiteralPath $From)) {
-        Write-Warning "Missing source file: $From"
-        return
-    }
-
-    Copy-Item -LiteralPath $From -Destination $To -Force
-    Write-Host "Copied: $(Split-Path -Leaf $From) -> $To"
-}
-
-function Remove-IfExists {
-    param(
-        [string]$Path
-    )
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        return
-    }
-
-    Remove-Item -LiteralPath $Path -Force
-    Write-Host "Removed legacy file: $Path"
-}
-
-Start-AdminElevationIfNeeded
-
-if (-not (Test-Path -LiteralPath $SourceDir)) {
-    throw "Source directory does not exist: $SourceDir"
-}
-
 $scriptFiles = @(
     'aeExportTrackedCameraToMaya.jsx',
     'aeVersionUpSelected.jsx',
@@ -77,33 +24,140 @@ $includeFiles = @(
     'aeRenderFolderTools.jsxinc'
 )
 
-function Get-UserScriptRoots {
-    $roots = New-Object System.Collections.Generic.List[string]
+$managedFileNames = @(
+    $scriptFiles +
+    $panelFiles +
+    $legacyPanelFiles +
+    $includeFiles
+) | Sort-Object -Unique
 
-    $documentsAdobe = Join-Path $env:USERPROFILE 'Documents\Adobe'
-    if (Test-Path -LiteralPath $documentsAdobe) {
-        Get-ChildItem -LiteralPath $documentsAdobe -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -like 'After Effects *' } |
+function Copy-IfExists {
+    param(
+        [string]$From,
+        [string]$To
+    )
+
+    if (-not (Test-Path -LiteralPath $From)) {
+        Write-Warning "Missing source file: $From"
+        return
+    }
+
+    try {
+        Copy-Item -LiteralPath $From -Destination $To -Force
+        Write-Host "Copied: $(Split-Path -Leaf $From) -> $To"
+    } catch {
+        Write-Warning "Unable to copy to $To : $($_.Exception.Message)"
+    }
+}
+
+function Remove-IfExists {
+    param(
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    try {
+        Remove-Item -LiteralPath $Path -Force
+        Write-Host "Removed legacy file: $Path"
+    } catch {
+        Write-Warning "Unable to remove $Path : $($_.Exception.Message)"
+    }
+}
+
+if (-not (Test-Path -LiteralPath $SourceDir)) {
+    throw "Source directory does not exist: $SourceDir"
+}
+
+function Get-InstalledAERoots {
+    $roots = @()
+    $programFilesAdobe = 'C:\Program Files\Adobe'
+
+    if (-not (Test-Path -LiteralPath $programFilesAdobe)) {
+        return $roots
+    }
+
+    Get-ChildItem -LiteralPath $programFilesAdobe -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^Adobe After Effects (\d{4})$' } |
+        ForEach-Object {
+            $supportFilesRoot = Join-Path $_.FullName 'Support Files'
+            $scriptsRoot = Join-Path $supportFilesRoot 'Scripts'
+
+            if (Test-Path -LiteralPath $supportFilesRoot) {
+                $roots += [PSCustomObject]@{
+                    Year = [int]$Matches[1]
+                    ScriptsDir = $scriptsRoot
+                }
+            }
+        }
+
+    return $roots | Sort-Object Year -Unique
+}
+
+function Get-CanonicalUserScriptRoot {
+    param(
+        [int]$Year
+    )
+
+    $documentsRoot = Join-Path $env:USERPROFILE ("Documents\Adobe\After Effects {0}\Scripts" -f $Year)
+    return $documentsRoot
+}
+
+function Get-ManagedScriptRoots {
+    $roots = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+    $searchBases = @(
+        'C:\Program Files\Adobe',
+        (Join-Path $env:USERPROFILE 'Documents\Adobe'),
+        (Join-Path $env:APPDATA 'Adobe\After Effects')
+    )
+
+    foreach ($base in $searchBases) {
+        if (-not (Test-Path -LiteralPath $base)) {
+            continue
+        }
+
+        Get-ChildItem -LiteralPath $base -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $managedFileNames -contains $_.Name } |
             ForEach-Object {
-                $scriptsRoot = Join-Path $_.FullName 'Scripts'
-                if (-not $roots.Contains($scriptsRoot)) {
-                    $roots.Add($scriptsRoot)
+                $parent = $_.Directory
+                if ($parent -and $parent.Name -eq 'ScriptUI Panels') {
+                    $parent = $parent.Parent
+                }
+
+                if ($parent) {
+                    [void]$roots.Add($parent.FullName)
                 }
             }
     }
 
-    $roamingAdobe = Join-Path $env:APPDATA 'Adobe\After Effects'
-    if (Test-Path -LiteralPath $roamingAdobe) {
-        Get-ChildItem -LiteralPath $roamingAdobe -Directory -ErrorAction SilentlyContinue |
-            ForEach-Object {
-                $scriptsRoot = Join-Path $_.FullName 'Scripts'
-                if (-not $roots.Contains($scriptsRoot)) {
-                    $roots.Add($scriptsRoot)
-                }
-            }
+    return @($roots)
+}
+
+function Remove-ManagedFilesFromRoot {
+    param(
+        [string]$ScriptsDir
+    )
+
+    $panelsDir = Join-Path $ScriptsDir 'ScriptUI Panels'
+
+    foreach ($file in $scriptFiles) {
+        Remove-IfExists -Path (Join-Path $ScriptsDir $file)
     }
 
-    return $roots
+    foreach ($file in $panelFiles) {
+        Remove-IfExists -Path (Join-Path $panelsDir $file)
+    }
+
+    foreach ($file in $legacyPanelFiles) {
+        Remove-IfExists -Path (Join-Path $panelsDir $file)
+    }
+
+    foreach ($file in $includeFiles) {
+        Remove-IfExists -Path (Join-Path $ScriptsDir $file)
+        Remove-IfExists -Path (Join-Path $panelsDir $file)
+    }
 }
 
 function Sync-AE-ScriptRoot {
@@ -130,35 +184,46 @@ function Sync-AE-ScriptRoot {
 
     foreach ($file in $includeFiles) {
         Copy-IfExists -From (Join-Path $SourceDir $file) -To (Join-Path $ScriptsDir $file)
-        Copy-IfExists -From (Join-Path $SourceDir $file) -To (Join-Path $panelsDir $file)
+        Remove-IfExists -Path (Join-Path $panelsDir $file)
     }
 }
 
-$aeRoots = Get-ChildItem 'C:\Program Files\Adobe' -Directory |
-    Where-Object { $_.Name -like 'Adobe After Effects *' } |
-    ForEach-Object { Join-Path $_.FullName 'Support Files' } |
-    Where-Object { Test-Path -LiteralPath $_ }
-
-if (-not $aeRoots) {
+$installedRoots = Get-InstalledAERoots
+if (-not $installedRoots) {
     throw 'No After Effects installations found in C:\Program Files\Adobe.'
 }
 
 Write-Host 'Detected AE installs:'
-$aeRoots | ForEach-Object { Write-Host "- $_" }
+$installedRoots | ForEach-Object { Write-Host ("- After Effects {0}" -f $_.Year) }
 
-foreach ($root in $aeRoots) {
-    Sync-AE-ScriptRoot -ScriptsDir (Join-Path $root 'Scripts')
+$canonicalRoots = $installedRoots |
+    ForEach-Object {
+        [PSCustomObject]@{
+            Year = $_.Year
+            ScriptsDir = (Get-CanonicalUserScriptRoot -Year $_.Year)
+        }
+    }
+
+Write-Host 'Deploying managed scripts to canonical user roots:'
+$canonicalRoots | ForEach-Object { Write-Host "- $($_.ScriptsDir)" }
+
+$managedRoots = Get-ManagedScriptRoots
+$canonicalRootLookup = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+$canonicalRoots | ForEach-Object { [void]$canonicalRootLookup.Add($_.ScriptsDir) }
+
+Write-Host 'Cleaning managed duplicates from non-canonical roots:'
+foreach ($root in $managedRoots | Sort-Object) {
+    if ($canonicalRootLookup.Contains($root)) {
+        continue
+    }
+
+    Write-Host "- $root"
+    Remove-ManagedFilesFromRoot -ScriptsDir $root
 }
 
-$userScriptRoots = Get-UserScriptRoots
-if ($userScriptRoots.Count -gt 0) {
-    Write-Host 'Detected user AE script folders:'
-    $userScriptRoots | ForEach-Object { Write-Host "- $_" }
-
-    foreach ($scriptsDir in $userScriptRoots) {
-        Sync-AE-ScriptRoot -ScriptsDir $scriptsDir
-    }
+foreach ($root in $canonicalRoots) {
+    Sync-AE-ScriptRoot -ScriptsDir $root.ScriptsDir
 }
 
 Write-Host ''
-Write-Host 'Done. Restart After Effects to load updated scripts/panels.' -ForegroundColor Green
+Write-Host 'Done. If Teamocil Rx is already open, close and reopen that panel once. A full After Effects restart should not be necessary.' -ForegroundColor Green
