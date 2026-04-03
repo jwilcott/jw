@@ -1,7 +1,7 @@
 // Shared core for AE version up/down scripts.
 
-if (typeof AEVersions === 'undefined') {
-    var AEVersions = (function () {
+if (typeof $.global.AEVersions === 'undefined') {
+    $.global.AEVersions = (function () {
         var MAX_VERSION_JUMPS = 5;
 
         function isDigit(ch) {
@@ -287,3 +287,5 @@ if (typeof AEVersions === 'undefined') {
         };
     })();
 }
+
+var AEVersions = $.global.AEVersions;

@@ -48,8 +48,8 @@ function resolveTeamocilSiblingFile(fileName) {
 }
 
 function loadTeamocilCore() {
-    if (typeof AEVersions !== 'undefined') {
-        return;
+    if (typeof $.global.AEVersions !== 'undefined') {
+        return $.global.AEVersions;
     }
 
     var coreFile = resolveTeamocilSiblingFile('aeVersionCore.jsxinc');
@@ -58,9 +58,20 @@ function loadTeamocilCore() {
     }
 
     $.evalFile(coreFile);
+
+    if (typeof $.global.AEVersions !== 'undefined') {
+        return $.global.AEVersions;
+    }
+
+    if (typeof AEVersions !== 'undefined') {
+        $.global.AEVersions = AEVersions;
+        return $.global.AEVersions;
+    }
+
+    throw new Error('aeVersionCore.jsxinc loaded but did not define AEVersions');
 }
 
-loadTeamocilCore();
+var AEVersions = loadTeamocilCore();
 
 (function teamocilRxPanel(thisObj) {
     var PANEL_NAME = 'Teamocil Rx';
