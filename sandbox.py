@@ -66,6 +66,15 @@ def imported_mesh_transforms(new_nodes):
     return unique_in_order(mesh_transforms)
 
 
+def show_viewport_message(message):
+    cmds.inViewMessage(
+        amg=message,
+        pos="midCenter",
+        fade=True,
+        fadeStayTime=1000,
+    )
+
+
 def clean_selected_geo_via_obj():
     mesh_transforms = selected_mesh_transforms()
     if not mesh_transforms:
@@ -107,6 +116,7 @@ def clean_selected_geo_via_obj():
     else:
         cmds.select(clear=True)
 
+    show_viewport_message("Cleaned")
     print("Clean OBJ round-trip complete: {}".format(export_path))
 
 
