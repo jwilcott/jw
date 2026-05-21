@@ -1,9 +1,18 @@
 // Search all nodes for anything with "Turtle" in the name
 string $allNodes[] = `ls -long`;
+int $deletedCount = 0;
+
 for ($node in $allNodes) {
     if (`objExists $node` && `gmatch $node "*Turtle*"`) {
         lockNode -lock off $node;
         delete $node;
         print ("Deleted: " + $node + "\n");
+        $deletedCount++;
     }
+}
+
+if ($deletedCount == 0) {
+    print "No Turtle nodes found.\n";
+} else {
+    print ("Deleted " + $deletedCount + " Turtle node(s).\n");
 }

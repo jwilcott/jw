@@ -7,6 +7,14 @@
 import maya.cmds as cmds
 import os
 
+def print_instructions():
+    instructions = (
+        "Locators should have 'AE' in the name. Use Maya's Rivit tool\n"
+        "Remember to check the focal length in AE after importing.\n"
+    )
+    print(instructions)
+    cmds.warning("No object selected. See Script Editor for AE Bake instructions.")
+
 def bake_object(obj_name):
     # Determine name based on object type
     if obj_name == 'Camera':
@@ -46,21 +54,6 @@ def bake_object(obj_name):
     
     return baked_obj
 
-# Get all locators with "AE" in the name
-locators = cmds.ls("*AE*", type="locator")
-locator_transforms = [cmds.listRelatives(loc, parent=True)[0] for loc in locators]
-
-# List of objects to process
-objects_to_bake = ['Camera'] + locator_transforms
-
-# Process all objects
-baked_objects = [bake_object(obj) for obj in objects_to_bake]
-
-# Create group and parent all baked objects
-export_group = cmds.group(empty=True, name='AE Export')
-for obj in baked_objects:
-    cmds.parent(obj, export_group)
-
 def construct_render_path():
     workspace_dir = cmds.workspace(q=True, rd=True)
     images_dir = cmds.workspace(fileRuleEntry="images")
@@ -71,25 +64,47 @@ def construct_render_path():
         prefix = prefix.replace("<scene>", scene_name)
     return os.path.dirname(os.path.join(render_directory, prefix))
 
-# Get render directory using the construct_render_path function
-directory = construct_render_path()
-try:
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-except (OSError, PermissionError) as e:
-    cmds.warning(f"Unable to create directory: {directory}")
-    directory = cmds.workspace(q=True, rd=True)
-    cmds.warning(f"Falling back to project directory: {directory}")
+def main():
+    if not cmds.ls(selection=True):
+        print_instructions()
+        return
 
-# Export the group as .ma file
-export_file = os.path.join(directory, 'AE_Export.ma')
-try:
-    cmds.select(export_group)
-    cmds.file(export_file, 
-             force=True, 
-             options='v=0', 
-             type='mayaAscii', 
-             exportSelected=True)
-    cmds.warning(f"Successfully exported to: {export_file}")
-except Exception as e:
-    cmds.warning(f"Failed to export: {str(e)}")
+    # Get all locators with "AE" in the name
+    locators = cmds.ls("*AE*", type="locator")
+    locator_transforms = [cmds.listRelatives(loc, parent=True)[0] for loc in locators]
+
+    # List of objects to process
+    objects_to_bake = ['Camera'] + locator_transforms
+
+    # Process all objects
+    baked_objects = [bake_object(obj) for obj in objects_to_bake]
+
+    # Create group and parent all baked objects
+    export_group = cmds.group(empty=True, name='AE Export')
+    for obj in baked_objects:
+        cmds.parent(obj, export_group)
+
+    # Get render directory using the construct_render_path function
+    directory = construct_render_path()
+    try:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+    except (OSError, PermissionError) as e:
+        cmds.warning(f"Unable to create directory: {directory}")
+        directory = cmds.workspace(q=True, rd=True)
+        cmds.warning(f"Falling back to project directory: {directory}")
+
+    # Export the group as .ma file
+    export_file = os.path.join(directory, 'AE_Export.ma')
+    try:
+        cmds.select(export_group)
+        cmds.file(export_file,
+                 force=True,
+                 options='v=0',
+                 type='mayaAscii',
+                 exportSelected=True)
+        cmds.warning(f"Successfully exported to: {export_file}")
+    except Exception as e:
+        cmds.warning(f"Failed to export: {str(e)}")
+
+main()

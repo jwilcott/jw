@@ -1,0 +1,30 @@
+(dp0
+Vid
+p1
+V3f2fb89cf3aab2
+p2
+sVname
+p3
+VPipeline
+p4
+sVinfo
+p5
+VShot + Asset management
+p6
+sVtags
+p7
+V
+p8
+sVicon
+p9
+Vpipeline.png
+p10
+sVcommand
+p11
+Vimport pipeline\u000apipeline.maya_libs.maya_gui.reloadModule()\u000apipeline.start()
+p12
+sVsyntax
+p13
+Vpython
+p14
+s.

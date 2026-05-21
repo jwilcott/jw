@@ -12,6 +12,14 @@ def _short_name(node_name):
     return node_name.split("|")[-1].split(":")[-1]
 
 
+def _safe_node_name(node_name):
+    return node_name.split("|")[-1].replace(":", "_")
+
+
+def _unique_in_order(items):
+    return list(dict.fromkeys(items))
+
+
 def _make_unique_name(base_name):
     if not cmds.objExists(base_name):
         return base_name
@@ -23,7 +31,7 @@ def _make_unique_name(base_name):
 
 
 def _ensure_redshift_material(base_name):
-    material_name = "{}_RS".format(_short_name(base_name))
+    material_name = "{}_RS".format(_safe_node_name(base_name))
 
     if cmds.objExists(material_name):
         if cmds.nodeType(material_name) == "RedshiftMaterial":
@@ -107,44 +115,121 @@ def _get_surface_shader(shading_group):
     return shaders[0]
 
 
+def _long_name(item):
+    matches = cmds.ls(item, long=True, flatten=True) or []
+    return matches[0] if matches else item
+
+
+def _node_from_component(item):
+    return item.split(".", 1)[0]
+
+
+def _shapes_for_node(node):
+    node_path = _long_name(node)
+    try:
+        node_type = cmds.nodeType(node_path)
+    except Exception:
+        return []
+
+    if node_type == "transform":
+        return cmds.listRelatives(node_path, shapes=True, noIntermediate=True, fullPath=True) or []
+
+    if node_type in {"mesh", "nurbsSurface", "subdiv"}:
+        return [node_path]
+
+    return []
+
+
 def _shading_groups_for_target(target):
     if "." in target:
-        object_name = target.split(".", 1)[0]
-        shapes = cmds.ls(object_name, long=True) or [object_name]
+        shapes = _shapes_for_node(_node_from_component(target))
     else:
-        target_path = (cmds.ls(target, long=True) or [target])[0]
-        target_type = cmds.nodeType(target_path)
-        if target_type == "transform":
-            shapes = cmds.listRelatives(target_path, shapes=True, fullPath=True) or []
-        else:
-            shapes = [target_path]
+        shapes = _shapes_for_node(target)
 
     shading_groups = []
     for shape in shapes:
-        shape_sets = cmds.listConnections(shape, type="shadingEngine") or []
+        shape_sets = cmds.listConnections(
+            shape,
+            type="shadingEngine",
+            source=False,
+            destination=True,
+        ) or []
         shading_groups.extend(shape_sets)
 
-    return list(dict.fromkeys(shading_groups))
+    return _unique_in_order(shading_groups)
+
+
+def _is_member(item, shading_group):
+    try:
+        return bool(cmds.sets(item, isMember=shading_group))
+    except Exception:
+        return False
+
+
+def _normalized_set_members(shading_group, flatten=False):
+    members = cmds.sets(shading_group, q=True) or []
+    if not members:
+        return []
+
+    return cmds.ls(members, long=True, flatten=flatten) or members
+
+
+def _component_belongs_to_shapes(component, shapes):
+    owners = cmds.ls(component, objectsOnly=True, long=True) or []
+    shape_names = set(cmds.ls(shapes, long=True) or shapes)
+
+    for owner in owners:
+        owner_names = set(cmds.ls(owner, long=True) or [owner])
+        if owner_names & shape_names:
+            return True
+
+    return False
+
+
+def _component_members_for_target(shading_group, target):
+    components = cmds.ls(target, long=True, flatten=True) or [target]
+    return [component for component in components if _is_member(component, shading_group)]
+
+
+def _object_members_for_target(shading_group, target):
+    target_path = _long_name(target)
+    shapes = _shapes_for_node(target_path)
+    candidates = []
+
+    if _is_member(target_path, shading_group):
+        candidates.append(target_path)
+
+    for shape in shapes:
+        if _is_member(shape, shading_group):
+            candidates.append(shape)
+
+    for member in _normalized_set_members(shading_group, flatten=True):
+        if "." not in member:
+            continue
+        if _component_belongs_to_shapes(member, shapes):
+            candidates.append(member)
+
+    return _unique_in_order(candidates)
 
 
 def _members_for_target(shading_group, target):
-    members = cmds.sets(shading_group, q=True) or []
-    member_paths = cmds.ls(members, long=True, flatten=True) or []
-    target_path = (cmds.ls(target, long=True) or [target])[0]
-    target_type = cmds.nodeType(target)
+    if "." in target:
+        return _component_members_for_target(shading_group, target)
 
-    if "." in target_path:
-        return [member for member in member_paths if member == target_path]
+    return _object_members_for_target(shading_group, target)
 
-    matched = []
-    for member in member_paths:
-        if member == target_path or member.startswith(target_path + "|") or member.startswith(target_path + "."):
-            matched.append(member)
-        elif target_type == "transform":
-            shapes = cmds.listRelatives(target_path, shapes=True, fullPath=True) or []
-            if any(member == shape or member.startswith(shape + ".") for shape in shapes):
-                matched.append(member)
-    return list(dict.fromkeys(matched))
+
+def _split_object_and_component_members(members):
+    object_members = []
+    component_members = []
+
+    for member in members:
+        if "." in member:
+            component_members.append(member)
+        else:
+            object_members.append(member)
+
+    return object_members, component_members
 
 
 def _selected_targets():
@@ -171,7 +256,8 @@ def assign_redshift_shader():
         cmds.warning("No supported object or component selected.")
         return
 
-    converted_pairs = set()
+    converted_shaders = {}
+    copied_shaders = set()
 
     for target in targets:
         print("Processing target: {}".format(target))
@@ -179,6 +265,8 @@ def assign_redshift_shader():
         if not shading_groups:
             print("No shading group found for {}".format(target))
             continue
+
+        pending_assignments = []
 
         for shading_group in shading_groups:
             source_shader = _get_surface_shader(shading_group)
@@ -195,22 +283,47 @@ def assign_redshift_shader():
             if not target_members:
                 print("No members from {} matched target {}".format(shading_group, target))
                 continue
+            object_members, component_members = _split_object_and_component_members(target_members)
 
-            redshift_shader = _ensure_redshift_material(source_shader)
+            redshift_shader = converted_shaders.get(source_shader)
+            if not redshift_shader:
+                redshift_shader = _ensure_redshift_material(source_shader)
+                converted_shaders[source_shader] = redshift_shader
             redshift_sg = _ensure_shading_group(redshift_shader)
 
-            if (source_shader, redshift_shader) not in converted_pairs:
+            if source_shader not in copied_shaders:
                 color_attr = ".baseColor" if source_type == "standardSurface" else ".color"
                 _copy_attr_or_connection(source_shader + color_attr, redshift_shader + ".diffuse_color")
                 _copy_bump_or_normal(source_shader, redshift_shader)
-                converted_pairs.add((source_shader, redshift_shader))
+                copied_shaders.add(source_shader)
                 print("Converted {} -> {}".format(source_shader, redshift_shader))
 
-            try:
-                cmds.sets(target_members, edit=True, forceElement=redshift_sg)
-                print("Assigned {} to {}".format(redshift_shader, target_members))
-            except Exception as exc:
-                print("Failed to assign {} to {}: {}".format(redshift_shader, target_members, exc))
+            pending_assignments.append(
+                {
+                    "shader": redshift_shader,
+                    "shading_group": redshift_sg,
+                    "object_members": object_members,
+                    "component_members": component_members,
+                }
+            )
+
+        for assignment_type in ("object_members", "component_members"):
+            for assignment in pending_assignments:
+                members = assignment[assignment_type]
+                if not members:
+                    continue
+
+                try:
+                    cmds.sets(members, edit=True, forceElement=assignment["shading_group"])
+                    print("Assigned {} to {}".format(assignment["shader"], members))
+                except Exception as exc:
+                    print(
+                        "Failed to assign {} to {}: {}".format(
+                            assignment["shader"],
+                            members,
+                            exc,
+                        )
+                    )
 
 
 assign_redshift_shader()
