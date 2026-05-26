@@ -115,6 +115,17 @@ def _get_surface_shader(shading_group):
     return shaders[0]
 
 
+def _shading_groups_for_shader(shader):
+    shading_groups = cmds.listConnections(
+        shader + ".outColor",
+        type="shadingEngine",
+        source=False,
+        destination=True,
+    ) or []
+
+    return _unique_in_order(shading_groups)
+
+
 def _long_name(item):
     matches = cmds.ls(item, long=True, flatten=True) or []
     return matches[0] if matches else item
@@ -250,14 +261,85 @@ def _selected_targets():
     return list(dict.fromkeys(targets))
 
 
+def _selected_shaders():
+    selection = cmds.ls(selection=True, flatten=True) or []
+    if not selection:
+        return []
+
+    shaders = []
+    for item in selection:
+        if "." in item:
+            continue
+
+        try:
+            node_type = cmds.nodeType(item)
+        except Exception:
+            continue
+
+        if node_type in SUPPORTED_SHADER_TYPES:
+            shaders.append(item)
+        elif node_type == "shadingEngine":
+            source_shader = _get_surface_shader(item)
+            if source_shader and cmds.nodeType(source_shader) in SUPPORTED_SHADER_TYPES:
+                shaders.append(source_shader)
+
+    return _unique_in_order(shaders)
+
+
+def _convert_shader(source_shader, converted_shaders, copied_shaders):
+    source_type = cmds.nodeType(source_shader)
+    if source_type not in SUPPORTED_SHADER_TYPES:
+        print("Skipping {} because it is type {}".format(source_shader, source_type))
+        return None
+
+    redshift_shader = converted_shaders.get(source_shader)
+    if not redshift_shader:
+        redshift_shader = _ensure_redshift_material(source_shader)
+        converted_shaders[source_shader] = redshift_shader
+
+    if source_shader not in copied_shaders:
+        color_attr = ".baseColor" if source_type == "standardSurface" else ".color"
+        _copy_attr_or_connection(source_shader + color_attr, redshift_shader + ".diffuse_color")
+        _copy_bump_or_normal(source_shader, redshift_shader)
+        copied_shaders.add(source_shader)
+        print("Converted {} -> {}".format(source_shader, redshift_shader))
+
+    return redshift_shader
+
+
+def _convert_selected_shaders(shaders, converted_shaders, copied_shaders):
+    for source_shader in shaders:
+        print("Processing shader: {}".format(source_shader))
+        redshift_shader = _convert_shader(source_shader, converted_shaders, copied_shaders)
+        if not redshift_shader:
+            continue
+
+        shading_groups = _shading_groups_for_shader(source_shader)
+        if not shading_groups:
+            redshift_sg = _ensure_shading_group(redshift_shader)
+            print("No shading group found for {}; created {}".format(source_shader, redshift_sg))
+            continue
+
+        for shading_group in shading_groups:
+            try:
+                cmds.connectAttr(redshift_shader + ".outColor", shading_group + ".surfaceShader", force=True)
+                print("Connected {} to {}".format(redshift_shader, shading_group))
+            except Exception as exc:
+                print("Failed to connect {} to {}: {}".format(redshift_shader, shading_group, exc))
+
+
 def assign_redshift_shader():
+    selected_shaders = _selected_shaders()
     targets = _selected_targets()
-    if not targets:
-        cmds.warning("No supported object or component selected.")
+    if not selected_shaders and not targets:
+        cmds.warning("No supported shader, object, or component selected.")
         return
 
     converted_shaders = {}
     copied_shaders = set()
+
+    if selected_shaders:
+        _convert_selected_shaders(selected_shaders, converted_shaders, copied_shaders)
 
     for target in targets:
         print("Processing target: {}".format(target))
@@ -285,18 +367,10 @@ def assign_redshift_shader():
                 continue
             object_members, component_members = _split_object_and_component_members(target_members)
 
-            redshift_shader = converted_shaders.get(source_shader)
+            redshift_shader = _convert_shader(source_shader, converted_shaders, copied_shaders)
             if not redshift_shader:
-                redshift_shader = _ensure_redshift_material(source_shader)
-                converted_shaders[source_shader] = redshift_shader
+                continue
             redshift_sg = _ensure_shading_group(redshift_shader)
-
-            if source_shader not in copied_shaders:
-                color_attr = ".baseColor" if source_type == "standardSurface" else ".color"
-                _copy_attr_or_connection(source_shader + color_attr, redshift_shader + ".diffuse_color")
-                _copy_bump_or_normal(source_shader, redshift_shader)
-                copied_shaders.add(source_shader)
-                print("Converted {} -> {}".format(source_shader, redshift_shader))
 
             pending_assignments.append(
                 {
