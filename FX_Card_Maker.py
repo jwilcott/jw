@@ -221,6 +221,11 @@ def make_fx_card():
         subdivisionsY=1,
         name=plane_name,
     )
+    cmds.setAttr(plane_transform + ".scaleX", 20)
+    cmds.setAttr(plane_transform + ".scaleY", 20)
+    cmds.setAttr(plane_transform + ".scaleZ", 20)
+    cmds.setAttr(plane_transform + ".rotateX", 90)
+    cmds.makeIdentity(plane_transform, apply=True, translate=False, rotate=True, scale=True)
 
     material, viewport_material, shading_group = _create_redshift_material(base_name)
     file_node = cmds.shadingNode("file", asTexture=True, isColorManaged=True, name=file_name)
