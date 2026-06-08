@@ -95,6 +95,14 @@ def _connect_place2d_to_file(place2d_node, file_node):
             )
 
 
+def _set_attr_if_exists(node, attr, value):
+    if not _has_attr(node, attr):
+        return False
+
+    cmds.setAttr("{}.{}".format(node, attr), value)
+    return True
+
+
 def _choose_png_sequence_file():
     paths = cmds.fileDialog2(
         caption="Choose PNG Sequence Frame",
@@ -178,6 +186,16 @@ def _create_redshift_material(base_name):
     return material, viewport_material, shading_group
 
 
+def _configure_interactive_sequence_cache(file_node, sequence_info):
+    start_frame = int(sequence_info["first_frame"])
+    end_frame = int(sequence_info["last_frame"])
+
+    _set_attr_if_exists(file_node, "useHardwareTextureCycling", 1)
+    _set_attr_if_exists(file_node, "startCycleExtension", start_frame)
+    _set_attr_if_exists(file_node, "endCycleExtension", end_frame)
+    _set_attr_if_exists(file_node, "byCycleIncrement", 1)
+
+
 def _create_loop_expression(file_node, sequence_info):
     expr_name = _make_unique_name(sequence_info["base_name"] + "_frameLoop_EXP")
     scene_start_frame = int(cmds.playbackOptions(query=True, minTime=True))
@@ -236,6 +254,7 @@ def make_fx_card():
     cmds.setAttr(file_node + ".fileTextureName", sequence["path"], type="string")
     if _has_attr(file_node, "useFrameExtension"):
         cmds.setAttr(file_node + ".useFrameExtension", 1)
+    _configure_interactive_sequence_cache(file_node, sequence)
 
     if _has_attr(file_node, "colorSpace"):
         try:
