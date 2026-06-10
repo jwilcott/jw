@@ -16,10 +16,12 @@ def create_playblast():
     base_name, _ = os.path.splitext(scene_name)
     
     # Define render directory
-    render_dir = cmds.workspace(q=True, rd=True) + cmds.workspace(fileRuleEntry="images")
+    images_rule = cmds.workspace(fileRuleEntry="images") or "images"
+    render_dir = os.path.join(cmds.workspace(q=True, rd=True), images_rule)
+    os.makedirs(render_dir, exist_ok=True)
     
     # Get render settings from Maya
-    file_prefix = cmds.getAttr("defaultRenderGlobals.imageFilePrefix")
+    file_prefix = cmds.getAttr("defaultRenderGlobals.imageFilePrefix") or base_name
     if "<scene>" in file_prefix:
         file_prefix = file_prefix.replace("<scene>", base_name)
     
