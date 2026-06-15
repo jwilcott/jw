@@ -1,5 +1,6 @@
 REM Render = C:\Program Files\Autodesk\Maya2025\bin
 
-Render "H:/Shared drives/Roblox Creative Studio/Projects/Roblox3D/scenes/SplitSword/Shot_010/versions/SplitSword_Shot_010_v004.mb"
+Render "H:/Shared drives/Roblox Post Production/02 Projects/Social_3D_2606/03 3D/01 3D Projects/maya/scenes/FireMeetsIce/Shot_010/versions/FireMeetsIce_Shot_010_v002.mb"
+
 
 
