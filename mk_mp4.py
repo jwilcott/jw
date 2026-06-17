@@ -67,11 +67,14 @@ def get_sequence_search_root(render_dir, raw_prefix, resolved_prefix):
     return os.path.normpath(render_dir)
 
 
-def find_sequence_specs(search_root, extension, frame_padding):
+def find_sequence_specs(search_root, extension, frame_padding, max_depth=3):
     frame_regex = re.compile(rf"^(?P<base>.+)\.(?P<frame>\d{{{frame_padding}}}){re.escape(extension)}$")
     grouped_sequences = {}
+    root_depth = search_root.rstrip(os.sep).count(os.sep)
 
-    for dirpath, _, filenames in os.walk(search_root):
+    for dirpath, dirnames, filenames in os.walk(search_root):
+        if dirpath.count(os.sep) - root_depth >= max_depth:
+            dirnames[:] = []
         for filename in filenames:
             match = frame_regex.match(filename)
             if not match:
@@ -209,11 +212,14 @@ def convert_to_mp4(sequence_spec, fps, start_frame, end_frame):
     command = [
         "ffmpeg",
         "-y",  # Automatically overwrite existing files
+        "-hide_banner",
+        "-loglevel", "error",
         "-framerate", str(fps),
         "-start_number", str(start_frame),  # Explicitly set start frame
         "-i", input_path,
         "-frames:v", str(frame_count),
         "-c:v", "libx264",
+        "-preset", "veryfast",
         "-pix_fmt", "yuv420p",
         output_file
     ]
@@ -223,10 +229,9 @@ def convert_to_mp4(sequence_spec, fps, start_frame, end_frame):
     env["PATH"] += os.pathsep + FFMPEG_BIN_DIR
 
     print("Running command:", " ".join(command))
-    result = subprocess.run(command, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    print("FFmpeg Output:\n", result.stdout)
-    print("FFmpeg Errors:\n", result.stderr)
+    result = subprocess.run(command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
+        print("FFmpeg Errors:\n", result.stderr)
         raise RuntimeError(f"FFmpeg failed with exit code {result.returncode}")
 
     return output_file
@@ -252,7 +257,7 @@ if __name__ == "__main__":
     try:
         settings = find_image_sequence_from_maya_settings()
         sequence_specs = find_sequence_specs(
-            settings["search_root"],
+            settings["input_dir"],
             settings["extension"],
             settings["frame_padding"]
         )
@@ -264,11 +269,11 @@ if __name__ == "__main__":
 
         if not sequence_specs:
             raise FileNotFoundError(
-                f"No image sequences found under {settings['search_root']} with extension {settings['extension']}"
+                f"No image sequences found in {settings['input_dir']} with extension {settings['extension']}"
             )
 
         created_files = []
-        print(f"Found {len(sequence_specs)} sequence(s) under {settings['search_root']}")
+        print(f"Found {len(sequence_specs)} sequence(s) in {settings['input_dir']}")
 
         for sequence_spec in sequence_specs:
             output_file = convert_to_mp4(
