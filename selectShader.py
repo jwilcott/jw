@@ -1,5 +1,5 @@
 #Reveal Shader in Attribute Editor for selected object
-#if shader redshift shader is plugged into shading group, it will be selected in the attribute editor
+#if redshift shader is plugged into shading group, it will be selected in the attribute editor
 
 import maya.cmds as cmds
 
@@ -19,17 +19,21 @@ def select_shader_from_selection():
         if shapes:
             for shape in shapes:
                 # Use the full path of the shape for connection queries
-                shading_groups = cmds.listConnections(shape, type='shadingEngine')
+                sg_raw = cmds.listConnections(shape, type='shadingEngine')
+                shading_groups = cmds.ls(sg_raw, long=True) if sg_raw else []
                 if shading_groups:
                     for sg in shading_groups:
-                        # Check for shaders connected to surfaceShader
-                        shaders = cmds.listConnections(sg + ".surfaceShader", source=True, destination=False)
-                        # Check for shaders connected to Redshift Surface Shader
-                        rs_shaders = cmds.listConnections(sg + ".rsSurfaceShader", source=True, destination=False)
-                        if shaders:
-                            shaders_to_select.extend(list(set(shaders)))
+                        rs_shaders = (
+                            cmds.listConnections(sg + ".rsSurfaceShader", source=True, destination=False)
+                            if cmds.attributeQuery("rsSurfaceShader", node=sg, exists=True)
+                            else None
+                        )
                         if rs_shaders:
                             shaders_to_select.extend(list(set(rs_shaders)))
+                        else:
+                            shaders = cmds.listConnections(sg + ".surfaceShader", source=True, destination=False)
+                            if shaders:
+                                shaders_to_select.extend(list(set(shaders)))
 
     if shaders_to_select:
         # Ensure the final list is unique before selecting
