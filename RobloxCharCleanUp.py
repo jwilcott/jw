@@ -9,6 +9,7 @@
 import maya.cmds as cmds
 
 TARGET_HEIGHT = 20.0
+MERGE_VERTEX_DISTANCE = 0.001
 
 def bottom_pivot_from_bbox(bbox):
     return [(bbox[0] + bbox[3]) / 2, bbox[1], (bbox[2] + bbox[5]) / 2]
@@ -88,15 +89,18 @@ def process_scene():
         for obj in mesh_transforms:
             cmds.xform(obj, relative=True, scale=[scale_factor, scale_factor, scale_factor])
 
-    # PolyMergeVert .001 for each mesh transform
+    # Merge nearby vertices on each mesh before converting triangles to quads.
     for obj in mesh_transforms:
         shapes = cmds.listRelatives(obj, shapes=True, type='mesh', fullPath=True) or []
         if shapes:
-            cmds.select(obj)
             try:
-                cmds.polyMergeVertex(d=0.001)
-            except Exception:
-                cmds.warning(f"Could not merge vertices for {obj}")
+                cmds.polyMergeVertex(
+                    f"{obj}.vtx[*]",
+                    distance=MERGE_VERTEX_DISTANCE,
+                    alwaysMergeTwoVertices=False,
+                )
+            except Exception as e:
+                cmds.warning(f"Could not merge vertices for {obj}: {e}")
 
     # Quadulate each object, uncheck keep hard edges
     for obj in mesh_transforms:
