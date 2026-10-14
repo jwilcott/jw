@@ -111,13 +111,24 @@ var AEVersions = loadTeamocilCore();
 
     function runVersion(direction) {
         try {
-            var result = loadTeamocilCore().run(direction, PANEL_NAME);
+            var result = AEVersions.run(direction, PANEL_NAME);
             if (!result) {
                 return;
             }
             setStatus(result.statusMessage || result.message, result.updated === 0);
         } catch (err) {
             setStatus('Unable to version selected sources. ' + err.toString(), true);
+        }
+    }
+
+    function reloadSelected() {
+        try {
+            var result = AEVersions.reload(PANEL_NAME);
+            if (result) {
+                setStatus(result.statusMessage || result.message, result.updated === 0);
+            }
+        } catch (err) {
+            setStatus('Unable to reload selected sources. ' + err.toString(), true);
         }
     }
 
@@ -179,6 +190,10 @@ var AEVersions = loadTeamocilCore();
         addToolButton(group, '\u2193', 'Version Down', function () {
             runVersion(-1);
         });
+        var reloadButton = addToolButton(group, 'Reload', 'Reload selected timeline or Project footage', function () {
+            reloadSelected();
+        });
+        reloadButton.preferredSize = [58, 28];
         addToolButton(group, '\uD83D\uDCC1', 'Open Last Render Folder', function () {
             openLastRenderedFolder();
         });
