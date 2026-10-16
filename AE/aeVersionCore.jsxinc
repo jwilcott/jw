@@ -522,6 +522,51 @@ $.global.AEVersions = (function (existingApi) {
             };
         }
 
+        function versionUpComps() {
+            var selection = app.project ? app.project.selection : [];
+            var updated = 0;
+            var skipped = [];
+            app.beginUndoGroup('Version Up Selected Comps');
+            try {
+                for (var i = 0; i < selection.length; i++) {
+                    var comp = selection[i];
+                    if (!(comp instanceof CompItem)) {
+                        continue;
+                    }
+                    try {
+                        var match = comp.name.match(/([vV])(\d+)$/);
+                        if (match) {
+                            // Increment as a string to preserve padding and allow v999 -> v1000.
+                            var digits = match[2].split('');
+                            var carry = 1;
+                            for (var j = digits.length - 1; j >= 0 && carry; j--) {
+                                var next = parseInt(digits[j], 10) + carry;
+                                digits[j] = String(next % 10);
+                                carry = next > 9 ? 1 : 0;
+                            }
+                            if (carry) {
+                                digits.unshift('1');
+                            }
+                            comp.name = comp.name.substring(0, match.index) + match[1] + digits.join('');
+                        } else {
+                            comp.name += '_v001';
+                        }
+                        updated++;
+                    } catch (err) {
+                        skipped.push(comp.name + ' (rename failed: ' + err.toString() + ')');
+                    }
+                }
+            } finally {
+                app.endUndoGroup();
+            }
+            var message = updated || skipped.length
+                ? 'Comps versioned up: ' + updated + (skipped.length ? ' | skipped: ' + skipped.length : '')
+                : 'Select one or more compositions in the Project panel.';
+            $.writeln(message);
+            return { updated: updated, skipped: skipped, statusMessage: message, message: message };
+        }
+
+        api.versionUpComps = versionUpComps;
         api.run = run;
         api.reload = function (logPrefix) {
             return run(0, logPrefix || 'Reload');

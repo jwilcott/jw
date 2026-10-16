@@ -1,5 +1,5 @@
 // After Effects ScriptUI Panel: compact versioning and export tools.
-// Supports selected timeline layers (active comp) or selected footage in Project panel.
+// Supports source versioning and renaming selected Project panel compositions.
 
 function getTeamocilSearchRoots() {
     var roots = [];
@@ -121,6 +121,15 @@ var AEVersions = loadTeamocilCore();
         }
     }
 
+    function versionUpSelectedComps() {
+        try {
+            var result = AEVersions.versionUpComps();
+            setStatus(result.statusMessage, result.updated === 0);
+        } catch (err) {
+            setStatus('Unable to version selected comps. ' + err.toString(), true);
+        }
+    }
+
     function reloadSelected() {
         try {
             var result = AEVersions.reload(PANEL_NAME);
@@ -190,6 +199,10 @@ var AEVersions = loadTeamocilCore();
         addToolButton(group, '\u2193', 'Version Down', function () {
             runVersion(-1);
         });
+        var compVersionButton = addToolButton(group, 'Comp +',
+            'Rename selected Project comps: Comp_v001 to Comp_v002; unversioned names get _v001',
+            versionUpSelectedComps);
+        compVersionButton.preferredSize = [66, 28];
         var reloadButton = addToolButton(group, 'Reload', 'Reload selected timeline or Project footage', function () {
             reloadSelected();
         });
