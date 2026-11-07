@@ -41,7 +41,7 @@
         this.outputFile = null;
         this.shiftCenter = true;
         this.useWorkArea = true;
-        this.worldScale = DEFAULT_WORLD_SCALE * 0.001;
+        this.worldScale = DEFAULT_WORLD_SCALE;
     }
 
     function ExportItem(layer, safeName, itemType) {
@@ -306,25 +306,52 @@
         return parseSequenceFilePath(sourceFile.fsName) !== null;
     }
 
-    function getSelectedSequenceLayer(comp) {
-        var matches = [];
-        var i;
-
-        if (!comp.selectedLayers || !comp.selectedLayers.length) {
-            return null;
-        }
-
-        for (i = 0; i < comp.selectedLayers.length; i++) {
-            if (isEligibleSequenceLayer(comp.selectedLayers[i])) {
-                matches.push(comp.selectedLayers[i]);
+    // Resolve a completed render of this comp before falling back to source footage.
+    function getLatestRenderedPlate(comp, sampleRange, usedNames) {
+        var queue = app.project.renderQueue;
+        for (var i = queue.numItems; i >= 1; i--) {
+            var item = queue.item(i);
+            if (item.comp !== comp || item.status !== RQItemStatus.DONE) { continue; }
+            for (var j = item.numOutputModules; j >= 1; j--) {
+                var output = item.outputModule(j).file;
+                if (!output || !output.parent.exists) { continue; }
+                var name = File.decode(output.name);
+                var token = name.match(/\[#+\]/);
+                if (!token) { continue; }
+                var prefix = name.substring(0, token.index);
+                var suffix = name.substring(token.index + token[0].length);
+                if (!/\.(jpg|jpeg|png|exr|tif|tiff|tga|bmp|iff|dpx)$/i.test(suffix)) { continue; }
+                var files = output.parent.getFiles(function (f) {
+                    if (!(f instanceof File)) { return false; }
+                    var n = File.decode(f.name);
+                    return n.indexOf(prefix) === 0 && n.slice(-suffix.length) === suffix &&
+                        /^\d+$/.test(n.substring(prefix.length, n.length - suffix.length));
+                });
+                if (!files.length) { continue; }
+                files.sort(function (a, b) { return parseSequenceFilePath(a.fsName).startFrame - parseSequenceFilePath(b.fsName).startFrame; });
+                var info = parseSequenceFilePath(files[0].fsName);
+                var data = new PlateData(null, sanitizeNodeName(comp.name + "_imagePlane", usedNames));
+                data.filePath = escapeForMayaString(files[0].fsName);
+                data.frameCount = sampleRange.frameCount;
+                data.sequenceLength = files.length;
+                for (var k = 0; k < sampleRange.frameCount; k++) {
+                    var time = sampleRange.start + k * comp.frameDuration;
+                    var offset = Math.round((time - item.timeSpanStart) / comp.frameDuration);
+                    offset = Math.max(0, Math.min(files.length - 1, offset));
+                    data.frameExtension = appendKeyValue(data.frameExtension, k + 1,
+                        parseSequenceFilePath(files[offset].fsName).startFrame);
+                }
+                return data;
             }
         }
+        return null;
+    }
 
-        if (matches.length > 1) {
-            throw new Error("Select only one numbered image sequence layer for the Maya geo plate.");
+    function getSequenceLayer(comp) {
+        for (var i = 1; i <= comp.numLayers; i++) {
+            if (isEligibleSequenceLayer(comp.layer(i))) { return comp.layer(i); }
         }
-
-        return matches.length ? matches[0] : null;
+        return null;
     }
 
     function getSourceFrameDuration(layer, compFrameDuration) {
@@ -426,49 +453,16 @@
     }
 
     function getExportItems(comp) {
-        var i;
-        var hasSelectedLayers = comp.selectedLayers && comp.selectedLayers.length > 0;
-        var supported = [];
-
-        function collectFromLayers(layersToCheck) {
-            var collected = [];
-            var localUsedNames = {};
-            var j;
-
-            for (j = 0; j < layersToCheck.length; j++) {
-                var layer = layersToCheck[j];
-                if (!isSupportedLayer(layer)) {
-                    continue;
-                }
-
-                collected.push(new ExportItem(
-                    layer,
-                    sanitizeNodeName(layer.name, localUsedNames),
-                    isTrackerNullLayer(layer) ? "locator" : "camera"
-                ));
+        var items = [];
+        var usedNames = {};
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layer(i);
+            if (isSupportedLayer(layer)) {
+                items.push(new ExportItem(layer, sanitizeNodeName(layer.name, usedNames),
+                    isCameraLayer(layer) ? "camera" : "locator"));
             }
-
-            return collected;
         }
-
-        if (hasSelectedLayers) {
-            var selectedLayers = [];
-            for (i = 0; i < comp.selectedLayers.length; i++) {
-                selectedLayers.push(comp.selectedLayers[i]);
-            }
-
-            supported = collectFromLayers(selectedLayers);
-        }
-
-        if (!supported.length) {
-            var allLayers = [];
-            for (i = 1; i <= comp.numLayers; i++) {
-                allLayers.push(comp.layer(i));
-            }
-            supported = collectFromLayers(allLayers);
-        }
-
-        return supported;
+        return items;
     }
 
     function hasFileAccessEnabled() {
@@ -524,7 +518,7 @@
         var selectionNote = optionsPanel.add(
             "statictext",
             undefined,
-            "Selected cameras/nulls export first. If one numbered footage sequence is also selected, the Maya file includes a camera-aligned geo plate for it."
+            "Exports all cameras and 3D nulls in this comp. Uses the latest completed image-sequence render, or sequence footage, as the camera image plane."
         );
         selectionNote.maximumSize.width = 700;
 
@@ -540,7 +534,7 @@
             "10x",
             "100x"
         ]);
-        scaleDropdown.selection = 0;
+        scaleDropdown.selection = 3;
 
         var buttons = dialog.add("group");
         buttons.alignment = "right";
@@ -656,7 +650,7 @@
         layerCopy.parent = layerCopyParent;
 
         var layerName = escapeForExpressionString(item.layer.name);
-        var layerRefExp = "L = thisComp.layer(\"" + layerName + "\");" + RET;
+        var layerRefExp = "L = thisComp.layer(" + item.layer.index + ");" + RET;
 
         var unitMatrixExp =
             "c=L.toWorldVec([0,0,0]);" + RET +
@@ -877,7 +871,7 @@
         lines.push("    setAttr \".vfa\" " + formatNumber(filmBack.height) + ";");
         lines.push("    setAttr \".ff\" 1;");
         lines.push("    setAttr \".cap\" -type \"double2\" " + formatNumber(filmBack.width) + " " + formatNumber(filmBack.height) + ";");
-        lines.push("    setAttr \".ncp\" 1;");
+        lines.push("    setAttr \".ncp\" 0.001;");
         lines.push("    setAttr \".fcp\" 1000;");
         lines.push("    setAttr \".imn\" -type \"string\" \"" + nodeName + "\";");
         lines.push("    setAttr \".den\" -type \"string\" \"" + nodeName + "_Depth\";");
@@ -1052,6 +1046,40 @@
         lines.push("");
     }
 
+    function appendImagePlaneNode(lines, plateData, cameraName, cameraShape, depth, compMeta) {
+        var name = plateData.safeName;
+        var aspect = getOriginalFrameAspect(compMeta.width, compMeta.height, compMeta.pixelAspect);
+        var filmBack = getMayaFilmBack(aspect);
+        lines.push('createNode transform -n "' + name + '" -p "' + cameraName + '";');
+        lines.push('createNode imagePlane -n "' + name + 'Shape" -p "' + name + '";');
+        lines.push('    setAttr ".imageName" -type "string" "' + plateData.filePath + '";');
+        lines.push('    setAttr ".colorSpace" -type "string" "sRGB";');
+        lines.push('    setAttr ".ignoreColorSpaceFileRules" yes;');
+        lines.push('    setAttr ".lockedToCamera" yes;');
+        // Match Maya's Fit to Resolution Gate for the exported horizontal-fit camera.
+        lines.push('    setAttr ".sizeX" ' + formatNumber(filmBack.width) + ';');
+        lines.push('    setAttr ".sizeY" ' + formatNumber(filmBack.width / aspect) + ';');
+        lines.push('    setAttr ".useFrameExtension" yes;');
+        lines.push('    setAttr ".frameCache" ' + Math.max(1, plateData.sequenceLength) + ';');
+        lines.push('    setAttr ".depth" ' + formatNumber(depth) + ';');
+        lines.push('    setAttr ".displayOnlyIfCurrent" yes;');
+        lines.push('    setAttr ".fit" 1;');
+        appendAnimCurve(lines, name + '_FrameExtension', 'animCurveTU', plateData.frameCount, plateData.frameExtension);
+        lines.push('connectAttr "' + name + '_FrameExtension.o" "' + name + 'Shape.frameExtension";');
+        lines.push('connectAttr "' + name + 'Shape.message" "' + cameraShape + '.imagePlane[0]";');
+        // Match the connections made by Maya's imagePlane command.
+        var colorConnections = [
+            ["cmEnabled", "colorManagementEnabled"],
+            ["configFileEnabled", "colorManagementConfigFileEnabled"],
+            ["configFilePath", "colorManagementConfigFilePath"],
+            ["workingSpaceName", "workingSpace"]
+        ];
+        for (var i = 0; i < colorConnections.length; i++) {
+            lines.push('connectAttr ":defaultColorMgtGlobals.' + colorConnections[i][0] +
+                '" "' + name + 'Shape.' + colorConnections[i][1] + '";');
+        }
+    }
+
     function appendLocatorNode(lines, data, groupName) {
         var nodeName = data.item.safeName;
 
@@ -1095,9 +1123,6 @@
         lines.push("//Name: " + outputFile.name);
         lines.push("//Last modified: " + (new Date()).toString());
         lines.push("requires maya \"2020\";");
-        if (plateData) {
-            lines.push("requires -nodeType \"RedshiftMaterial\" \"redshift4maya\" \"1.0\";");
-        }
         lines.push("currentUnit -l meter -a degree -t " + getMayaTimeUnit(compMeta.frameRate) + ";");
         lines.push("");
         lines.push("createNode transform -n \"" + groupName + "\";");
@@ -1123,7 +1148,7 @@
             if (!primaryCameraShapeName) {
                 throw new Error("A numbered image sequence was selected, but no camera was exported to attach the geo plate to.");
             }
-            appendGeoPlateNode(lines, plateData, primaryCameraData, primaryCameraName, compMeta, getImagePlaneDepth(sampledItems, primaryCameraData));
+            appendImagePlaneNode(lines, plateData, primaryCameraName, primaryCameraShapeName, getImagePlaneDepth(sampledItems, primaryCameraData), compMeta);
         }
 
         lines.push("select -ne :time1;");
@@ -1175,7 +1200,7 @@
         var selectedSequenceLayer = null;
 
         try {
-            selectedSequenceLayer = getSelectedSequenceLayer(comp);
+            selectedSequenceLayer = getSequenceLayer(comp);
         } catch (selectionErr) {
             showError(selectionErr.toString());
             return;
@@ -1223,7 +1248,8 @@
             restoreCompAspect(comp, originalWidth, originalPixelAspect, helperCreated);
             helperCreated = false;
 
-            if (selectedSequenceLayer) {
+            plateData = getLatestRenderedPlate(comp, sampleRange, usedNames);
+            if (!plateData && selectedSequenceLayer) {
                 plateData = buildPlateData(comp, selectedSequenceLayer, sampleRange, usedNames);
             }
 
@@ -1261,7 +1287,7 @@
         app.endUndoGroup();
 
         var successMessage = "Exported " + sampledItems.length + " tracked item(s)" +
-            (plateData ? " and 1 geo plate sequence" : "") +
+            (plateData ? " and 1 image plane sequence" : "") +
             " to:\r" + settings.outputFile.fsName;
 
         if (!reportStatus(successMessage, false)) {
