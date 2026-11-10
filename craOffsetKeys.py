@@ -143,12 +143,17 @@ def craOffsetKeysProc(objects, framesOffset, mode=0, sorting=1,
                 offset += step / index
         else:
             offset = step
-        flags = dict(edit=True, relative=True, option='over', adjustBreakdowns=True)
+        flags = dict(edit=True, relative=True, option='over', adjustBreakdown=True)
         flags['timeChange' if is_time else 'valueChange'] = offset
-        if attrs:
+        # Channel Box attributes describe animated objects, not curve nodes.
+        if attrs and not cmds.nodeType(obj).startswith('animCurve'):
             flags['attribute'] = attrs
         if curves:
-            flags['animation'] = 'keys'
+            indices = cmds.keyframe(obj, query=True, selected=True, indexValue=True) or []
+            if not indices:
+                continue
+            flags['index'] = [(index, index) for index in indices]
+            flags['animation'] = 'objects'
         elif time_range:
             flags['time'] = tuple(time_range)
             flags['includeUpperBound'] = False
@@ -257,7 +262,8 @@ def _toggle_infinity(*_):
     editor = 'graphEditor1GraphEd'
     if cmds.animCurveEditor(editor, exists=True):
         visible = cmds.animCurveEditor(editor, query=True, displayInfinities=True)
-        cmds.animCurveEditor(editor, edit=True, displayInfinities=not visible)
+        cmds.animCurveEditor(editor, edit=True,
+                             displayInfinities='off' if visible else 'on')
 
 
 def _mode(which, value):
