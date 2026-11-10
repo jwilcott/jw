@@ -1,5 +1,6 @@
 param(
-    [string]$SourceDir = $PSScriptRoot
+    [string]$SourceDir = $PSScriptRoot,
+    [int]$TargetYear = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,14 +13,27 @@ if (-not $isAdministrator) {
     $argumentList = @(
         '-ExecutionPolicy', 'Bypass',
         '-File', ('"{0}"' -f $PSCommandPath),
-        '-SourceDir', ('"{0}"' -f $SourceDir)
+        '-SourceDir', ('"{0}"' -f $SourceDir),
+        '-TargetYear', $TargetYear
     )
 
-    Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argumentList | Out-Null
+    Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -ArgumentList $argumentList | Out-Null
     return
 }
 
-$targetYear = 2026
+if ($TargetYear -eq 0) {
+    $latestInstall = Get-ChildItem -LiteralPath 'C:\Program Files\Adobe' -Directory |
+        Where-Object {
+            $_.Name -match '^Adobe After Effects \d{4}$' -and
+            (Test-Path -LiteralPath (Join-Path $_.FullName 'Support Files\AfterFX.exe'))
+        } |
+        Sort-Object Name -Descending |
+        Select-Object -First 1
+    if (-not $latestInstall) {
+        throw 'No After Effects installation found in C:\Program Files\Adobe.'
+    }
+    $TargetYear = [int]($latestInstall.Name -replace '^Adobe After Effects ', '')
+}
 $aeRoot = "C:\Program Files\Adobe\Adobe After Effects $targetYear\Support Files"
 $targetScriptsDir = Join-Path $aeRoot 'Scripts'
 $targetPanelsDir = Join-Path $targetScriptsDir 'ScriptUI Panels'
