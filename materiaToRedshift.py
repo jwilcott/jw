@@ -1,5 +1,5 @@
 # Converts supported Maya shaders on the current selection to Redshift materials.
-# Connected color and bump/normal inputs are preserved where possible.
+# Connected color, transparency, and bump/normal inputs are preserved where possible.
 
 import maya.cmds as cmds
 
@@ -80,6 +80,41 @@ def _copy_attr_or_connection(source_attr, destination_attr):
             cmds.setAttr(destination_attr, value)
     except Exception as exc:
         print("Failed to copy value from {} to {}: {}".format(source_attr, destination_attr, exc))
+
+
+def _copy_transparency_connection(source_shader, target_shader):
+    if not cmds.attributeQuery("transparency", node=source_shader, exists=True):
+        return
+
+    source_attr = source_shader + ".transparency"
+    target_attr = target_shader + ".opacity_color"
+    source_children = cmds.attributeQuery("transparency", node=source_shader, listChildren=True) or []
+    incoming = cmds.connectionInfo(source_attr, sourceFromDestination=True)
+    child_inputs = [
+        cmds.connectionInfo(source_shader + "." + child, sourceFromDestination=True)
+        for child in source_children
+    ]
+    if not incoming and not any(child_inputs):
+        return
+
+    try:
+        reverse = cmds.shadingNode(
+            "reverse", asUtility=True,
+            name=_make_unique_name(_safe_node_name(target_shader) + "_opacity_reverse"),
+        )
+        if incoming:
+            cmds.connectAttr(incoming, reverse + ".input", force=True)
+        else:
+            # Preserve unconnected channel values before wiring individual channels.
+            value = cmds.getAttr(source_attr)[0]
+            cmds.setAttr(reverse + ".input", *value, type="double3")
+            for channel, child_input in zip("XYZ", child_inputs):
+                if child_input:
+                    cmds.connectAttr(child_input, reverse + ".input" + channel, force=True)
+        cmds.connectAttr(reverse + ".output", target_attr, force=True)
+        print("Connected {} through {} to {}".format(source_attr, reverse, target_attr))
+    except Exception as exc:
+        print("Failed to connect transparency from {} to {}: {}".format(source_attr, target_attr, exc))
 
 
 def _copy_bump_or_normal(source_shader, target_shader):
@@ -300,6 +335,7 @@ def _convert_shader(source_shader, converted_shaders, copied_shaders):
     if source_shader not in copied_shaders:
         color_attr = ".baseColor" if source_type == "standardSurface" else ".color"
         _copy_attr_or_connection(source_shader + color_attr, redshift_shader + ".diffuse_color")
+        _copy_transparency_connection(source_shader, redshift_shader)
         _copy_bump_or_normal(source_shader, redshift_shader)
         copied_shaders.add(source_shader)
         print("Converted {} -> {}".format(source_shader, redshift_shader))
