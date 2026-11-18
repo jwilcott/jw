@@ -4,7 +4,7 @@
 import maya.cmds as cmds
 
 
-SUPPORTED_SHADER_TYPES = {"phong", "blinn", "standardSurface"}
+SUPPORTED_SHADER_TYPES = {"lambert", "phong", "blinn", "standardSurface"}
 BUMP_NODE_TYPES = {"bump2d", "bump3d"}
 
 
@@ -82,7 +82,7 @@ def _copy_attr_or_connection(source_attr, destination_attr):
         print("Failed to copy value from {} to {}: {}".format(source_attr, destination_attr, exc))
 
 
-def _copy_transparency_connection(source_shader, target_shader):
+def _copy_transparency(source_shader, target_shader, copy_static=False):
     if not cmds.attributeQuery("transparency", node=source_shader, exists=True):
         return
 
@@ -95,6 +95,9 @@ def _copy_transparency_connection(source_shader, target_shader):
         for child in source_children
     ]
     if not incoming and not any(child_inputs):
+        if copy_static:
+            opacity = [1.0 - value for value in cmds.getAttr(source_attr)[0]]
+            cmds.setAttr(target_attr, *opacity, type="double3")
         return
 
     try:
@@ -335,7 +338,10 @@ def _convert_shader(source_shader, converted_shaders, copied_shaders):
     if source_shader not in copied_shaders:
         color_attr = ".baseColor" if source_type == "standardSurface" else ".color"
         _copy_attr_or_connection(source_shader + color_attr, redshift_shader + ".diffuse_color")
-        _copy_transparency_connection(source_shader, redshift_shader)
+        if source_type == "lambert":
+            _copy_attr_or_connection(source_shader + ".diffuse", redshift_shader + ".diffuse_weight")
+            cmds.setAttr(redshift_shader + ".refl_weight", 0.0)
+        _copy_transparency(source_shader, redshift_shader, copy_static=(source_type == "lambert"))
         _copy_bump_or_normal(source_shader, redshift_shader)
         copied_shaders.add(source_shader)
         print("Converted {} -> {}".format(source_shader, redshift_shader))

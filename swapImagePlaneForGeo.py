@@ -45,15 +45,22 @@ def _list_selected_image_plane_shapes():
     for node in selection:
         node_type = cmds.nodeType(node)
 
-        if node_type == "imagePlane":
-            image_plane_shapes.append(node)
-            continue
-
         if node_type == "transform":
             shapes = cmds.listRelatives(node, shapes=True, fullPath=True) or []
-            for shape in shapes:
-                if cmds.nodeType(shape) == "imagePlane":
-                    image_plane_shapes.append(shape)
+        else:
+            shapes = [node]
+
+        for shape in shapes:
+            shape_type = cmds.nodeType(shape)
+            if shape_type == "imagePlane":
+                image_plane_shapes.append(shape)
+            elif shape_type == "camera":
+                source_plugs = cmds.listConnections(
+                    shape + ".imagePlane", source=True, destination=False,
+                    type="imagePlane", plugs=True,
+                ) or []
+                for plug in source_plugs:
+                    image_plane_shapes.extend(cmds.ls(plug.split(".", 1)[0], long=True) or [])
 
     ordered = []
     seen = set()
@@ -319,7 +326,7 @@ def _create_attached_render_plane(base_name, visible_plane, camera_transform):
     )[0]
 
     plane_transform, _ = _create_plane_mesh(base_name, visible_plane)
-    plane_transform = cmds.parent(plane_transform, group)[0]
+    plane_transform = cmds.parent(plane_transform, group, relative=True)[0]
     plane_shape = (cmds.listRelatives(plane_transform, shapes=True, fullPath=True) or [None])[0]
 
     cmds.setAttr(plane_transform + ".translateX", visible_plane["center_x"])
@@ -351,7 +358,7 @@ def _create_free_render_plane(base_name, visible_plane, image_plane_transform):
     )[0]
 
     plane_transform, _ = _create_plane_mesh(base_name, visible_plane)
-    plane_transform = cmds.parent(plane_transform, group)[0]
+    plane_transform = cmds.parent(plane_transform, group, relative=True)[0]
     plane_shape = (cmds.listRelatives(plane_transform, shapes=True, fullPath=True) or [None])[0]
 
     _connect_matching_scale(image_plane_transform, group)
@@ -550,12 +557,12 @@ def _assign_shader(shape_node, shading_group):
 
 
 def swap_image_plane_for_geo():
-    if not _ensure_redshift():
-        return
-
     image_plane_shapes = _list_selected_image_plane_shapes()
     if not image_plane_shapes:
-        cmds.warning("Select one or more imagePlane nodes or their transforms.")
+        cmds.warning("Select an image plane or a camera with an attached image plane.")
+        return
+
+    if not _ensure_redshift():
         return
 
     created_geo = []
